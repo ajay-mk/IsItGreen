@@ -39,7 +39,7 @@ providers can be added (see [Adding a provider](docs/development.md#adding-a-pro
 ## Getting started
 
 1. Download the installer for your platform from the
-   [Releases](https://github.com/ajay-mk/git-dash/releases) page. The builds
+   [Releases](https://github.com/ajay-mk/IsItGreen/releases) page. The builds
    are not code-signed yet; [docs/installing.md](docs/installing.md) explains
    the first-launch warnings and how to verify the download.
 2. Create a read-only GitHub fine-grained token with

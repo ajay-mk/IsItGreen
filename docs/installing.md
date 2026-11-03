@@ -1,7 +1,7 @@
 # Installing IsItGreen
 
 Download the installer for your platform from the
-[Releases](https://github.com/ajay-mk/git-dash/releases) page:
+[Releases](https://github.com/ajay-mk/IsItGreen/releases) page:
 
 | Platform | File |
 | --- | --- |
@@ -44,6 +44,6 @@ An update replaces the app the same way it was installed (the `.app`, the
 Windows installer you used, the AppImage, or the `.deb`/`.rpm` package, which
 asks for your password). Versions released before the updater was added
 cannot update themselves: install the latest one from the
-[Releases](https://github.com/ajay-mk/git-dash/releases) page once.
+[Releases](https://github.com/ajay-mk/IsItGreen/releases) page once.
 
 Next, [create an access token](tokens.md).

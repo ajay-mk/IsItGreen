@@ -71,9 +71,9 @@ guarantees that. Set up once:
    must not list either secret under *Repository secrets*.
 
 To check you have the right key and password before saving them, sign a
-throwaway file with it: `npx tauri signer sign -f ~/.tauri/gitdash.key
+throwaway file with it: `npx tauri signer sign -f ~/.tauri/isitgreen.key
 <file>` (with `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` set) fails on a wrong
-password, and `base64 --decode < ~/.tauri/gitdash.key.pub` shows the key ID,
+password, and `base64 --decode < ~/.tauri/isitgreen.key.pub` shows the key ID,
 which must match the one in `plugins.updater.pubkey`.
 
 Keep a backup of the key file and its password outside GitHub. **If either is
@@ -83,10 +83,10 @@ key in the app, which users have to install by hand once.
 To make a new key pair (only when replacing a lost or leaked key):
 
 ```sh
-npx tauri signer generate -w ~/.tauri/gitdash.key
+npx tauri signer generate -w ~/.tauri/isitgreen.key
 ```
 
-Put the contents of `~/.tauri/gitdash.key.pub` in `plugins.updater.pubkey`
+Put the contents of `~/.tauri/isitgreen.key.pub` in `plugins.updater.pubkey`
 and update both secrets in the `release` environment.
 
 Only the *Sign the update files* job of the release workflow can read these

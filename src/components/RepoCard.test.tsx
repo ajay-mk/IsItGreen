@@ -61,6 +61,13 @@ describe('RepoCard', () => {
     expect(within(card()).getByText('No open issues labeled bug')).toBeTruthy();
   });
 
+  it('keeps a list whose entries are all hidden drafts, with its count', () => {
+    const repo = pinned('octo', 'repo', { widgets: [{ type: 'pullRequests', limit: 5, hideDrafts: true }] });
+    render(<RepoCard {...noLayout} repo={repo} result={ok(snapshot({ pullRequests: { total: 2, items: [] } }))} />);
+    expect(within(card()).getByRole('heading', { name: /Pull requests/ }).textContent).toContain('2');
+    expect(within(card()).getByText('Only drafts are open; drafts are hidden')).toBeTruthy();
+  });
+
   it('renders API text as text, never as markup', () => {
     const payload = '<img src=x onerror="window.__pwned=1">';
     const data = snapshot({

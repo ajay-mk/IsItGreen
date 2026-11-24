@@ -220,7 +220,7 @@ textarea { width: 100%; resize: vertical; font-family: ui-monospace, SFMono-Regu
 .update-row .hint, .update-row .error-text { margin: 0; }
 .grid {
   /* Read by useCardResize to work out how many columns fit. */
-  --card-min: 400px;
+  --card-min: 360px;
   /* Cards stack in short rows (see useMasonry); --row-gap is kept free under each. */
   --row-unit: 8px;
   --row-gap: 14px;
@@ -335,7 +335,8 @@ textarea { width: 100%; resize: vertical; font-family: ui-monospace, SFMono-Regu
 }
 .badge-ok { color: var(--ok); background: var(--ok-bg); }
 .badge-bad { color: var(--bad); background: var(--bad-bg); }
-.label { color: var(--text); max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
+.label { color: var(--text); max-width: 140px; }
+.label-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .label-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--faint); }
 
 .ci, .kind { flex: none; display: inline-grid; place-items: center; width: 16px; }
@@ -456,10 +457,9 @@ textarea { width: 100%; resize: vertical; font-family: ui-monospace, SFMono-Regu
 }
 .row:hover { background: var(--hover); }
 .row-draft .row-title { color: var(--muted); }
-.row-action-fix { box-shadow: inset 2px 0 0 var(--bad); }
-.row-action-merge { box-shadow: inset 2px 0 0 var(--ok); }
 .row-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.row-num { flex: none; min-width: 30px; color: var(--faint); font-variant-numeric: tabular-nums; }
+.row-title .row-num { display: inline-block; min-width: 30px; margin-right: 6px; }
+.row-num { flex: none; color: var(--faint); font-variant-numeric: tabular-nums; }
 .row-meta { flex: none; color: var(--faint); font-size: 12px; min-width: 26px; text-align: right; font-variant-numeric: tabular-nums; }
 
 /* Sidebar items: the title on its own lines, the reference and state under it. */
@@ -476,6 +476,9 @@ textarea { width: 100%; resize: vertical; font-family: ui-monospace, SFMono-Regu
   box-shadow: var(--shadow);
 }
 .row-stacked:hover { background: var(--surface); border-color: var(--border-strong); }
+/* Your own PRs to act on: a bar on the leading edge (after .row-stacked, which sets its own shadow). */
+.row-action-fix { box-shadow: inset 2px 0 0 var(--bad), var(--shadow); }
+.row-action-merge { box-shadow: inset 2px 0 0 var(--ok), var(--shadow); }
 .row-stacked > .ci, .row-stacked > .kind { margin-top: 1px; }
 .row-stacked .row-title {
   font-weight: 500;
@@ -540,7 +543,9 @@ details .help-list { margin-top: 8px; }
   border-radius: 7px;
   cursor: pointer;
 }
-.segment[aria-pressed='true'], .segment:has(input:checked) { background: var(--surface); color: var(--text); box-shadow: 0 1px 2px rgb(0 0 0 / 0.12); }
+.segment[aria-pressed='true'] { background: var(--surface); color: var(--text); box-shadow: 0 1px 2px rgb(0 0 0 / 0.12); }
+/* Kept apart: an engine without :has() drops only this rule, not the one above. */
+.segment:has(input:checked) { background: var(--surface); color: var(--text); box-shadow: 0 1px 2px rgb(0 0 0 / 0.12); }
 label.segment { padding: 3px 12px; font-size: 12.5px; }
 .segment > input[type='radio'] { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; pointer-events: none; }
 .segment:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 1px; }

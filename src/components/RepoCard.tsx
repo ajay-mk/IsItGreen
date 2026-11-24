@@ -46,7 +46,11 @@ function Widget({ widget, data, collapsed, onToggle, delta, mergeRequests }: {
           badge={attention > 0 ? <span className="attention">{attention} {attention === 1 ? 'needs' : 'need'} attention</span> : null}
         >
           {prs.items.length === 0 ? (
-            <p className="empty">{mergeRequests ? 'No open merge requests' : 'No open pull requests'}</p>
+            <p className="empty">
+              {prs.total > 0
+                ? 'Only drafts are open; drafts are hidden'
+                : mergeRequests ? 'No open merge requests' : 'No open pull requests'}
+            </p>
           ) : (
             <ul className="rows">
               {prs.items.slice(0, shown(widget, delta)).map((pr) => (
@@ -91,7 +95,11 @@ function Widget({ widget, data, collapsed, onToggle, delta, mergeRequests }: {
 function allEmptyText(repo: PinnedRepo, data: RepoSnapshot): string | null {
   const lists = repo.widgets.filter((w) => w.type !== 'ci');
   if (lists.length === 0) return null;
-  const empty = lists.every((w) => (w.type === 'pullRequests' ? data.pullRequests : data.issues)?.items.length === 0);
+  // `total`, not just the entries shown: hidden drafts still count as open.
+  const empty = lists.every((w) => {
+    const list = w.type === 'pullRequests' ? data.pullRequests : data.issues;
+    return list?.total === 0 && list.items.length === 0;
+  });
   if (!empty) return null;
   const names = lists.map((w) =>
     w.type === 'issues' ? (w.label ? `issues labeled ${w.label}` : 'issues') : repo.provider === 'gitlab' ? 'merge requests' : 'pull requests',

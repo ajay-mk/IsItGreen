@@ -798,10 +798,19 @@ export function SettingsPanel({
           <h3>Needs you</h3>
           <div className="settings-group">
           <label className="check">
-            <input type="checkbox" className="switch" checked={inbox.enabled} onChange={(e) => setInbox({ enabled: e.target.checked })} />
+            <input
+              type="checkbox"
+              className="switch"
+              checked={inbox.enabled && !config.layout.inboxHidden}
+              onChange={(e) => {
+                const enabled = e.target.checked;
+                // Also undoes hiding it from the top bar, so "on" always means shown.
+                update((c) => ({ ...c, inbox: { ...c.inbox, enabled }, layout: { ...c.layout, inboxHidden: false } }));
+              }}
+            />
             Show sidebar
           </label>
-          <fieldset disabled={!inbox.enabled} className="plain">
+          <fieldset disabled={!inbox.enabled || config.layout.inboxHidden} className="plain">
             <label className="check">
               <input
                 type="checkbox"

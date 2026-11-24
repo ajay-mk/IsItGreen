@@ -333,6 +333,15 @@ describe('SettingsPanel', () => {
     expect(screen.getByRole('checkbox', { name: 'Your pull requests' }).closest('fieldset')?.disabled).toBe(true);
   });
 
+  it('shows the sidebar again when it was hidden from the top bar', async () => {
+    const { config } = setup({ layout: { ...defaultConfig().layout, inboxHidden: true } });
+    const toggle = screen.getByRole('checkbox', { name: 'Show sidebar' });
+    expect((toggle as HTMLInputElement).checked).toBe(false);
+    await userEvent.click(toggle);
+    expect(config().inbox.enabled).toBe(true);
+    expect(config().layout.inboxHidden).toBe(false);
+  });
+
   it('sets how your pull requests are grouped', async () => {
     const { config } = setup();
     const select = screen.getByRole('combobox', { name: 'Group by' });

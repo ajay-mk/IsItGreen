@@ -61,14 +61,18 @@ export function PullRequestRow({ pr, showRepo = false, stacked = false, action =
       <CiIcon state={pr.ci} />
       {stacked ? (
         <>
-          <RowTitle url={pr.url} title={pr.title} open={p.open} onToggle={p.toggle}>{pr.title}</RowTitle>
+          <RowTitle url={pr.url} title={pr.title} open={p.open} onToggle={p.toggle}>
+            <span className="sr-only">{ref} </span>
+            {pr.title}
+          </RowTitle>
           {time}
-          <span className="row-sub">{ref}{state}</span>
+          <span className="row-sub"><span aria-hidden="true">{ref}</span>{state}</span>
         </>
       ) : (
         <>
-          {ref}
-          <RowTitle url={pr.url} title={pr.title} open={p.open} onToggle={p.toggle}>{pr.title}</RowTitle>
+          <RowTitle url={pr.url} title={pr.title} open={p.open} onToggle={p.toggle}>
+            {ref} {pr.title}
+          </RowTitle>
           {state}
           {time}
         </>
@@ -84,7 +88,7 @@ function Labels({ labels }: { labels: IssueItem['labels'] }) {
       {/* Colour is validated as 6-digit hex in the mapper; set via the
           CSSOM, which the CSP allows (unlike inline style attributes). */}
       <i className="label-dot" style={label.color ? { background: `#${label.color}` } : undefined} aria-hidden="true" />
-      {label.name}
+      <span className="label-text">{label.name}</span>
     </span>
   ));
 }
@@ -101,7 +105,12 @@ export function IssueRow({ issue, showRepo = false, stacked = false, details }: 
   const p = useDetailsCard({ kind: 'issue', issue }, details, anchor);
   const cls = ['row', stacked && 'row-stacked', p.open && 'row-open'].filter(Boolean).join(' ');
   const ref = <span className="row-num">{showRepo ? `${repoShort(issue.repo)} ` : ''}{refSigil(issue.url, issue.isPullRequest)}{issue.number}</span>;
-  const title = <RowTitle url={issue.url} title={issue.title} open={p.open} onToggle={p.toggle}>{issue.title}</RowTitle>;
+  const title = (hidden: boolean) => (
+    <RowTitle url={issue.url} title={issue.title} open={p.open} onToggle={p.toggle}>
+      {hidden ? <span className="sr-only">{ref} </span> : <>{ref} </>}
+      {issue.title}
+    </RowTitle>
+  );
   const time = <span className="row-meta">{shortAgo(issue.updatedAt)}</span>;
   return (
     <li className={cls} ref={anchor}>
@@ -110,14 +119,13 @@ export function IssueRow({ issue, showRepo = false, stacked = false, details }: 
       </span>
       {stacked ? (
         <>
-          {title}
+          {title(true)}
           {time}
-          <span className="row-sub">{ref}<Labels labels={issue.labels} /></span>
+          <span className="row-sub"><span aria-hidden="true">{ref}</span><Labels labels={issue.labels} /></span>
         </>
       ) : (
         <>
-          {ref}
-          {title}
+          {title(false)}
           <Labels labels={issue.labels} />
           {time}
         </>

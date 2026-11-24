@@ -3,6 +3,7 @@ import { myPrAction } from '../lib/health';
 import type { Counted, InboxSnapshot, IssueItem, PullRequestItem } from '../providers/types';
 import { Collapsible } from './Collapsible';
 import { ExternalLink } from './ExternalLink';
+import type { IconName } from './Icons';
 import type { LoadDetails } from './ItemDetails';
 import { IssueRow, PullRequestRow } from './ItemRows';
 
@@ -35,8 +36,9 @@ export function groupPullRequests(items: PullRequestItem[], by: PrGrouping): Sub
   return null;
 }
 
-function Group<T>({ title, data, render, emptyText, collapsed, onToggle, subgroups }: {
+function Group<T>({ title, icon, data, render, emptyText, collapsed, onToggle, subgroups }: {
   title: string;
+  icon: IconName;
   data: Counted<T>;
   render: (item: T) => React.ReactNode;
   emptyText: string;
@@ -49,6 +51,7 @@ function Group<T>({ title, data, render, emptyText, collapsed, onToggle, subgrou
     <Collapsible
       className="inbox-group"
       title={title}
+      icon={icon}
       count={data.total}
       collapsed={collapsed}
       onToggle={onToggle}
@@ -90,6 +93,11 @@ export function InboxPanel({ config, layout, onLayoutChange, inbox, error, loadD
       }
     : null;
   const grouping = layout.groupMyPullRequests;
+  const total = inbox
+    ? (config.reviewRequests ? inbox.reviewRequests.total : 0) +
+      (config.myPullRequests ? inbox.myPullRequests.total : 0) +
+      (config.assigned ? inbox.assigned.total : 0)
+    : 0;
 
   const isCollapsed = (section: InboxSection) => layout.collapsedInbox.includes(section);
   const toggle = (section: InboxSection) =>
@@ -102,7 +110,10 @@ export function InboxPanel({ config, layout, onLayoutChange, inbox, error, loadD
 
   return (
     <aside className="sidebar" aria-label="Needs you">
-      <h2 className="sidebar-title">Needs you</h2>
+      <h2 className="sidebar-title">
+        Needs you
+        {total > 0 && <span className="sidebar-count">{total}</span>}
+      </h2>
       {error && <p className="error-text">{error}</p>}
       {!inbox && !error && <p className="empty">Loading…</p>}
       {inbox && (
@@ -117,16 +128,18 @@ export function InboxPanel({ config, layout, onLayoutChange, inbox, error, loadD
           {config.reviewRequests && (
             <Group
               title="Review requests"
+              icon="eye"
               data={inbox.reviewRequests}
               emptyText="Nothing to review"
               collapsed={isCollapsed('reviewRequests')}
               onToggle={() => toggle('reviewRequests')}
-              render={(pr: PullRequestItem) => <PullRequestRow key={pr.url} pr={pr} showRepo details={loadDetails} />}
+              render={(pr: PullRequestItem) => <PullRequestRow key={pr.url} pr={pr} showRepo stacked details={loadDetails} />}
             />
           )}
           {config.myPullRequests && sortedMine && (
             <Group
               title="Your pull requests"
+              icon="pr"
               data={sortedMine}
               emptyText="No open pull requests"
               collapsed={isCollapsed('myPullRequests')}
@@ -134,18 +147,19 @@ export function InboxPanel({ config, layout, onLayoutChange, inbox, error, loadD
               subgroups={groupPullRequests(sortedMine.items, grouping)}
               render={(pr: PullRequestItem) => (
                 // The repository is already the heading when grouped by it.
-                <PullRequestRow key={pr.url} pr={pr} showRepo={grouping !== 'repo'} action={myPrAction(pr)} details={loadDetails} />
+                <PullRequestRow key={pr.url} pr={pr} showRepo={grouping !== 'repo'} stacked action={myPrAction(pr)} details={loadDetails} />
               )}
             />
           )}
           {config.assigned && (
             <Group
               title="Assigned to you"
+              icon="person"
               data={inbox.assigned}
               emptyText="Nothing assigned"
               collapsed={isCollapsed('assigned')}
               onToggle={() => toggle('assigned')}
-              render={(issue: IssueItem) => <IssueRow key={issue.url} issue={issue} showRepo details={loadDetails} />}
+              render={(issue: IssueItem) => <IssueRow key={issue.url} issue={issue} showRepo stacked details={loadDetails} />}
             />
           )}
         </>

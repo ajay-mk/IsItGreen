@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import logo from './assets/logo.svg';
+import { Icon } from './components/Icons';
 import { InboxPanel } from './components/InboxPanel';
 import { RepoCard } from './components/RepoCard';
 import { SettingsPanel } from './components/SettingsPanel';
@@ -22,7 +23,6 @@ import { useCardResize } from './hooks/useCardResize';
 import { useMasonry } from './hooks/useMasonry';
 import { useReorder } from './hooks/useReorder';
 import { useUpdates } from './hooks/useUpdates';
-import { repoHealth } from './lib/health';
 import { inboxAlerts, SeenItems, showAlerts } from './lib/notify';
 import { shortAgo } from './lib/time';
 import { AppError, tokens, type TokenSummary } from './lib/transport';
@@ -204,14 +204,25 @@ export default function App() {
 
   const summary = useMemo(() => {
     let failing = 0;
+    let running = 0;
+    let passing = 0;
     let attention = 0;
     for (const repo of config.repos) {
-      const h = repoHealth(dash.repos.get(repoId(repo)));
-      if (h === 'failing' || h === 'error') failing++;
-      else if (h === 'attention') attention++;
+      const result = dash.repos.get(repoId(repo));
+      if (!result) continue;
+      if (!result.ok) {
+        failing++;
+        continue;
+      }
+      const { ci, prsNeedingAttention } = result.data;
+      if (ci === 'failure') failing++;
+      else if (ci === 'pending') running++;
+      else if (ci === 'success') passing++;
+      attention += prsNeedingAttention;
     }
-    return { failing, attention, reviews: dash.inbox?.reviewRequests.total ?? 0 };
+    return { failing, running, passing, attention, reviews: dash.inbox?.reviewRequests.total ?? 0 };
   }, [config.repos, dash.repos, dash.inbox]);
+  const sidebar = config.inbox.enabled && !config.layout.inboxHidden;
 
   if (auth === 'checking') return <main className="setup"><p className="empty">Loading…</p></main>;
   if (auth === 'missing' || auth === 'replacing' || tokenRejected) {
@@ -242,20 +253,40 @@ export default function App() {
   }
 
   return (
-    <div className={`app${config.inbox.enabled ? ' with-sidebar' : ''}`}>
+    <div className={`app${sidebar ? ' with-sidebar' : ''}`}>
       <header className="topbar">
         <h1 className="brand">
           <img className="brand-logo" src={logo} alt="" />
           IsItGreen
         </h1>
         <div className="summary" aria-live="polite">
-          {summary.failing > 0 && <span className="pill pill-bad">{summary.failing} failing</span>}
-          {summary.attention > 0 && <span className="pill pill-warn">{summary.attention} need attention</span>}
-          {config.inbox.enabled && config.inbox.reviewRequests && summary.reviews > 0 && (
-            <span className="pill pill-info">{summary.reviews} reviews requested</span>
-          )}
-          {summary.failing + summary.attention + summary.reviews === 0 && dash.lastUpdated && !dash.error && (
-            <span className="pill pill-ok">All clear</span>
+          {dash.lastUpdated && (
+            <>
+              {summary.failing > 0 && (
+                <span className="stat ci-failure"><Icon name="x" /><b>{summary.failing}</b> failing</span>
+              )}
+              {summary.running > 0 && (
+                <span className="stat ci-pending"><Icon name="clock" /><b>{summary.running}</b> running</span>
+              )}
+              {summary.passing > 0 && (
+                <span className="stat ci-success"><Icon name="check" /><b>{summary.passing}</b> passing</span>
+              )}
+              {(summary.attention > 0 || (config.inbox.enabled && config.inbox.reviewRequests && summary.reviews > 0)) && (
+                <span className="summary-divider" aria-hidden="true" />
+              )}
+              {summary.attention > 0 && (
+                <span className="stat">
+                  <Icon name="pr" />
+                  <b>{summary.attention}</b> {summary.attention === 1 ? 'PR needs' : 'PRs need'} attention
+                </span>
+              )}
+              {config.inbox.enabled && config.inbox.reviewRequests && summary.reviews > 0 && (
+                <span className="stat">
+                  <Icon name="eye" />
+                  <b>{summary.reviews}</b> {summary.reviews === 1 ? 'review' : 'reviews'} requested
+                </span>
+              )}
+            </>
           )}
         </div>
         <div className="topbar-actions">
@@ -266,19 +297,38 @@ export default function App() {
           )}
           {dash.lastUpdated && (
             <span className="meta" title={dash.lastUpdated.toLocaleString()}>
-              Updated {shortAgo(dash.lastUpdated.toISOString(), now)}
+              {dash.loading ? 'Refreshing…' : `Updated ${shortAgo(dash.lastUpdated.toISOString(), now)}`}
             </span>
           )}
-          <button type="button" className="btn" onClick={() => void dash.refresh()} disabled={dash.loading}>
-            {dash.loading ? 'Refreshing…' : 'Refresh'}
+          <button
+            type="button"
+            className={`icon-btn${dash.loading ? ' spinning' : ''}`}
+            aria-label="Refresh"
+            title="Refresh"
+            onClick={() => void dash.refresh()}
+            disabled={dash.loading}
+          >
+            <Icon name="refresh" size={16} />
           </button>
-          <button type="button" className="btn" onClick={() => setSettingsOpen(true)}>
-            Settings
+          {config.inbox.enabled && (
+            <button
+              type="button"
+              className="icon-btn"
+              aria-label="Show Needs you"
+              aria-pressed={sidebar}
+              title={sidebar ? 'Hide Needs you' : 'Show Needs you'}
+              onClick={() => update((c) => ({ ...c, layout: { ...c.layout, inboxHidden: !c.layout.inboxHidden } }))}
+            >
+              <Icon name="sidebar" size={16} />
+            </button>
+          )}
+          <button type="button" className="icon-btn" aria-label="Settings" title="Settings" onClick={() => setSettingsOpen(true)}>
+            <Icon name="settings" size={16} />
           </button>
         </div>
       </header>
 
-      {config.inbox.enabled && (
+      {sidebar && (
         <InboxPanel
           config={config.inbox}
           layout={config.layout}
@@ -354,7 +404,7 @@ export default function App() {
                     handle={
                       config.repos.length > 1 && (
                         <button type="button" className="icon-btn drag-handle" title="Drag to reorder" {...reorder.handleProps(repoId(repo))}>
-                          ⠿
+                          <Icon name="grip" />
                         </button>
                       )
                     }

@@ -1,14 +1,16 @@
 import { useId } from 'react';
-import { Icon } from './Icons';
+import { Icon, type IconName } from './Icons';
 
 /** A titled section whose body can be collapsed from its header. */
-export function Collapsible({ title, count, collapsed, onToggle, badge, className, name, children }: {
+export function Collapsible({ title, count, collapsed, onToggle, badge, icon, className, name, children }: {
   title: string;
   count: number;
   collapsed: boolean;
   onToggle: () => void;
   /** Shown next to the title, even while collapsed. */
   badge?: React.ReactNode;
+  /** Shown before the title. */
+  icon?: IconName;
   className: string;
   /** Identifies the section to code that measures it (`data-section`). */
   name?: string;
@@ -26,6 +28,7 @@ export function Collapsible({ title, count, collapsed, onToggle, badge, classNam
             aria-controls={bodyId}
             onClick={onToggle}
           >
+            {icon && <Icon name={icon} size={12} className="section-icon" />}
             {title} <span className="count">{count}</span>
             <Icon name={collapsed ? 'chevronRight' : 'chevronDown'} size={12} className="chevron" />
           </button>

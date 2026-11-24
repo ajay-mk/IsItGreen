@@ -156,7 +156,7 @@ describe('item details', () => {
 
     await userEvent.click(row);
     await screen.findByRole('dialog');
-    await userEvent.click(screen.getByRole('heading', { name: 'Needs you' }));
+    await userEvent.click(screen.getByRole('heading', { name: /^Needs you/ }));
     expect(screen.queryByRole('dialog')).toBeNull();
 
     await userEvent.click(row);

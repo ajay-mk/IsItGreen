@@ -54,8 +54,11 @@ describe('RepoCard', () => {
 
   it('shows the issue label filter in the widget title', () => {
     const repo = pinned('octo', 'repo', { widgets: [{ type: 'issues', limit: 5, label: 'bug' }] });
-    render(<RepoCard {...noLayout} repo={repo} result={ok()} />);
+    const { rerender } = render(<RepoCard {...noLayout} repo={repo} result={ok(snapshot({ issues: { total: 1, items: [issue()] } }))} />);
     expect(screen.getByRole('heading', { name: /Issues · bug/ })).toBeTruthy();
+    // With nothing open, the one empty line still names the filter.
+    rerender(<RepoCard {...noLayout} repo={repo} result={ok()} />);
+    expect(within(card()).getByText('No open issues labeled bug')).toBeTruthy();
   });
 
   it('renders API text as text, never as markup', () => {

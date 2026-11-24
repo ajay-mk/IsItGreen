@@ -1,4 +1,5 @@
 import { useId } from 'react';
+import { Icon } from './Icons';
 
 /** A titled section whose body can be collapsed from its header. */
 export function Collapsible({ title, count, collapsed, onToggle, badge, className, name, children }: {
@@ -25,8 +26,8 @@ export function Collapsible({ title, count, collapsed, onToggle, badge, classNam
             aria-controls={bodyId}
             onClick={onToggle}
           >
-            <span className="chevron" aria-hidden="true">{collapsed ? '▸' : '▾'}</span>
             {title} <span className="count">{count}</span>
+            <Icon name={collapsed ? 'chevronRight' : 'chevronDown'} size={12} className="chevron" />
           </button>
           {badge}
         </h3>

@@ -4,6 +4,7 @@ import type { IssueItem, PullRequestItem } from '../providers/types';
 import { ExternalLink } from './ExternalLink';
 import { refSigil } from '../lib/url';
 import { DetailsCard, type Item, type LoadDetails } from './ItemDetails';
+import { Icon } from './Icons';
 import { CiIcon, ReviewBadge } from './StatusIcons';
 
 /** Row title: opens the details card when `onToggle` is set, else the link. */
@@ -35,9 +36,11 @@ function repoShort(repo: string | undefined): string {
   return repo ? repo.split('/').at(-1) ?? repo : '';
 }
 
-export function PullRequestRow({ pr, showRepo = false, action = null, details }: {
+export function PullRequestRow({ pr, showRepo = false, stacked = false, action = null, details }: {
   pr: PullRequestItem;
   showRepo?: boolean;
+  /** Title on its own line, with the reference and state under it (the sidebar). */
+  stacked?: boolean;
   /** Highlights a PR the viewer should act on. */
   action?: 'fix' | 'merge' | null;
   /** When set, clicking opens a details card instead of the link. */
@@ -45,52 +48,80 @@ export function PullRequestRow({ pr, showRepo = false, action = null, details }:
 }) {
   const anchor = useRef<HTMLLIElement>(null);
   const p = useDetailsCard({ kind: 'pr', pr }, details, anchor);
-  const cls = ['row', pr.isDraft && 'row-draft', action && `row-action-${action}`, p.open && 'row-open'].filter(Boolean).join(' ');
+  const cls = ['row', stacked && 'row-stacked', pr.isDraft && 'row-draft', action && `row-action-${action}`, p.open && 'row-open'].filter(Boolean).join(' ');
+  const ref = <span className="row-num">{showRepo ? `${repoShort(pr.repo)} ` : ''}{refSigil(pr.url, true)}{pr.number}</span>;
+  const state = pr.isDraft ? <span className="badge badge-muted">Draft</span> : <ReviewBadge state={pr.review} />;
+  const time = (
+    <span className="row-meta" title={pr.author ? `by ${pr.author}` : undefined}>
+      {shortAgo(pr.updatedAt)}
+    </span>
+  );
   return (
     <li className={cls} ref={anchor}>
       <CiIcon state={pr.ci} />
-      <RowTitle url={pr.url} title={pr.title} open={p.open} onToggle={p.toggle}>
-        <span className="row-num">{showRepo ? repoShort(pr.repo) : ''}{refSigil(pr.url, true)}{pr.number}</span>{' '}
-        {pr.title}
-      </RowTitle>
-      {pr.isDraft ? <span className="badge badge-muted">draft</span> : <ReviewBadge state={pr.review} />}
-      <span className="row-meta" title={pr.author ? `by ${pr.author}` : undefined}>
-        {shortAgo(pr.updatedAt)}
-      </span>
+      {stacked ? (
+        <>
+          <RowTitle url={pr.url} title={pr.title} open={p.open} onToggle={p.toggle}>{pr.title}</RowTitle>
+          {time}
+          <span className="row-sub">{ref}{state}</span>
+        </>
+      ) : (
+        <>
+          {ref}
+          <RowTitle url={pr.url} title={pr.title} open={p.open} onToggle={p.toggle}>{pr.title}</RowTitle>
+          {state}
+          {time}
+        </>
+      )}
       {p.card}
     </li>
   );
 }
 
-export function IssueRow({ issue, showRepo = false, details }: {
+function Labels({ labels }: { labels: IssueItem['labels'] }) {
+  return labels.slice(0, 2).map((label) => (
+    <span key={label.name} className="badge label" title={label.name}>
+      {/* Colour is validated as 6-digit hex in the mapper; set via the
+          CSSOM, which the CSP allows (unlike inline style attributes). */}
+      <i className="label-dot" style={label.color ? { background: `#${label.color}` } : undefined} aria-hidden="true" />
+      {label.name}
+    </span>
+  ));
+}
+
+export function IssueRow({ issue, showRepo = false, stacked = false, details }: {
   issue: IssueItem;
   showRepo?: boolean;
+  /** Title on its own line, with the reference and labels under it (the sidebar). */
+  stacked?: boolean;
   /** When set, clicking opens a details card instead of the link. */
   details?: LoadDetails;
 }) {
   const anchor = useRef<HTMLLIElement>(null);
   const p = useDetailsCard({ kind: 'issue', issue }, details, anchor);
+  const cls = ['row', stacked && 'row-stacked', p.open && 'row-open'].filter(Boolean).join(' ');
+  const ref = <span className="row-num">{showRepo ? `${repoShort(issue.repo)} ` : ''}{refSigil(issue.url, issue.isPullRequest)}{issue.number}</span>;
+  const title = <RowTitle url={issue.url} title={issue.title} open={p.open} onToggle={p.toggle}>{issue.title}</RowTitle>;
+  const time = <span className="row-meta">{shortAgo(issue.updatedAt)}</span>;
   return (
-    <li className={p.open ? 'row row-open' : 'row'} ref={anchor}>
-      <span className={`kind ${issue.isPullRequest ? 'kind-pr' : 'kind-issue'}`} aria-hidden="true">
-        {issue.isPullRequest ? '⇄' : '○'}
+    <li className={cls} ref={anchor}>
+      <span className={`kind ${issue.isPullRequest ? 'kind-pr' : 'kind-issue'}`}>
+        <Icon name={issue.isPullRequest ? 'pr' : 'issue'} />
       </span>
-      <RowTitle url={issue.url} title={issue.title} open={p.open} onToggle={p.toggle}>
-        <span className="row-num">{showRepo ? repoShort(issue.repo) : ''}{refSigil(issue.url, issue.isPullRequest)}{issue.number}</span>{' '}
-        {issue.title}
-      </RowTitle>
-      {issue.labels.slice(0, 2).map((label) => (
-        <span
-          key={label.name}
-          className="label"
-          // Colour is validated as 6-digit hex in the mapper; set via the
-          // CSSOM, which the CSP allows (unlike inline style attributes).
-          style={label.color ? { borderColor: `#${label.color}` } : undefined}
-        >
-          {label.name}
-        </span>
-      ))}
-      <span className="row-meta">{shortAgo(issue.updatedAt)}</span>
+      {stacked ? (
+        <>
+          {title}
+          {time}
+          <span className="row-sub">{ref}<Labels labels={issue.labels} /></span>
+        </>
+      ) : (
+        <>
+          {ref}
+          {title}
+          <Labels labels={issue.labels} />
+          {time}
+        </>
+      )}
       {p.card}
     </li>
   );

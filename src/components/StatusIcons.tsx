@@ -1,25 +1,26 @@
 import type { CiState, ReviewState } from '../providers/types';
+import { Icon, type IconName } from './Icons';
 
-const CI_META: Record<CiState, { icon: string; label: string }> = {
-  success: { icon: '✓', label: 'CI passing' },
-  failure: { icon: '✕', label: 'CI failing' },
-  pending: { icon: '●', label: 'CI running' },
-  none: { icon: '–', label: 'No CI' },
+export const CI_META: Record<CiState, { icon: IconName; label: string; word: string }> = {
+  success: { icon: 'check', label: 'CI passing', word: 'Passing' },
+  failure: { icon: 'x', label: 'CI failing', word: 'Failing' },
+  pending: { icon: 'clock', label: 'CI running', word: 'Running' },
+  none: { icon: 'dash', label: 'No CI', word: 'No CI' },
 };
 
 export function CiIcon({ state }: { state: CiState }) {
   const meta = CI_META[state];
   return (
     <span className={`ci ci-${state}`} title={meta.label} aria-label={meta.label} role="img">
-      {meta.icon}
+      <Icon name={meta.icon} />
     </span>
   );
 }
 
 const REVIEW_META: Record<ReviewState, { text: string; cls: string } | null> = {
-  approved: { text: 'approved', cls: 'ok' },
-  changes_requested: { text: 'changes', cls: 'bad' },
-  review_required: { text: 'review', cls: 'muted' },
+  approved: { text: 'Approved', cls: 'ok' },
+  changes_requested: { text: 'Changes requested', cls: 'bad' },
+  review_required: { text: 'Review needed', cls: 'muted' },
   none: null,
 };
 

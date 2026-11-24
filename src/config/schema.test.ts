@@ -124,7 +124,10 @@ describe('parseConfig', () => {
       collapsedWidgets: ['github:a/b#issues'],
       cardSpans: { 'github:a/b': 2 },
       cardRows: { 'github:a/b': 30 },
+      inboxHidden: false,
     });
+    expect(parseConfig({ ...valid, layout: { inboxHidden: true } }).layout.inboxHidden).toBe(true);
+    expect(parseConfig({ ...valid, layout: { inboxHidden: 'yes' } }).layout.inboxHidden).toBe(false);
     for (const rows of [5, 201, 30.5, '30']) {
       const layout = { ...defaultConfig().layout, cardRows: { 'github:a/b': rows } };
       expect(parseConfig({ ...valid, layout }).layout.cardRows).toEqual({});

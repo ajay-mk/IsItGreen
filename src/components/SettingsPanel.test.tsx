@@ -61,7 +61,7 @@ async function pin(text: string) {
 }
 
 function expandRepo(name: string) {
-  return userEvent.click(screen.getByRole('button', { name: `▸ ${name}` }));
+  return userEvent.click(screen.getByRole('button', { name: name }));
 }
 
 describe('SettingsPanel', () => {
@@ -346,7 +346,7 @@ describe('SettingsPanel', () => {
   it('changes refresh interval and theme', async () => {
     const { config } = setup();
     await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Refresh' }), 'Every 15 min');
-    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Theme' }), 'Dark');
+    await userEvent.click(screen.getByRole('radio', { name: 'Dark' }));
     expect(config()).toMatchObject({ refreshMinutes: 15, theme: 'dark' });
   });
 
@@ -392,7 +392,7 @@ describe('SettingsPanel', () => {
         ['gitlab', 'acme', 'api'],
         ['github', 'octo', 'repo'],
       ]);
-      expect(screen.getByRole('button', { name: /^▸ group\/sub\/project/ }).textContent).toContain('GitLab');
+      expect(screen.getByRole('button', { name: /^group\/sub\/project/ }).textContent).toContain('GitLab');
     });
 
     it('suggests projects from GitLab when it is selected', async () => {

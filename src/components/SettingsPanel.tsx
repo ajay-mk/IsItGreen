@@ -34,6 +34,7 @@ import { connectedGitLabHost } from '../lib/url';
 import { providers } from '../providers';
 import { PROVIDER_IDS, type ProviderId } from '../providers/types';
 import { ExternalLink } from './ExternalLink';
+import { Icon } from './Icons';
 import { PermissionList } from './PermissionList';
 
 type Update = (fn: (c: DashboardConfig) => DashboardConfig) => void;
@@ -359,7 +360,7 @@ function RepoList({
       </form>
       {error && <p className="error-text" role="alert">{error}</p>}
       {config.repos.length === 0 && <p className="empty">No repositories pinned yet.</p>}
-      <ol className="repo-list">
+      {config.repos.length > 0 && <ol className="repo-list settings-group">
         {config.repos.map((repo, i) => {
           const id = repoId(repo);
           const open = expanded === id;
@@ -372,11 +373,12 @@ function RepoList({
                   aria-expanded={open}
                   onClick={() => setExpanded(open ? null : id)}
                 >
-                  {open ? '▾' : '▸'} {repo.owner}/{repo.name}
+                  <Icon name={open ? 'chevronDown' : 'chevronRight'} size={12} className="chevron-icon" />
+                  <span className="repo-item-label">{repo.owner}/{repo.name}</span>
                   {repo.provider !== 'github' && <span className="badge badge-muted">{providers[repo.provider].label}</span>}
                 </button>
                 <button type="button" className="icon-btn" aria-label="Move up" disabled={i === 0} onClick={() => move(i, -1)}>
-                  ↑
+                  <Icon name="up" />
                 </button>
                 <button
                   type="button"
@@ -385,17 +387,17 @@ function RepoList({
                   disabled={i === config.repos.length - 1}
                   onClick={() => move(i, 1)}
                 >
-                  ↓
+                  <Icon name="down" />
                 </button>
                 <button type="button" className="icon-btn danger" aria-label={`Unpin ${repo.owner}/${repo.name}`} onClick={() => remove(id)}>
-                  ✕
+                  <Icon name="x" />
                 </button>
               </div>
               {open && <WidgetEditor repo={repo} onChange={(w) => setWidgets(id, w)} />}
             </li>
           );
         })}
-      </ol>
+      </ol>}
     </>
   );
 }
@@ -444,7 +446,7 @@ function Backup({ config, update }: { config: DashboardConfig; update: Update })
         >
           Copy
         </button>
-        <button type="button" className="btn btn-primary" disabled={!text} onClick={doImport}>
+        <button type="button" className="btn" disabled={!text} onClick={doImport}>
           Import
         </button>
       </div>
@@ -486,11 +488,7 @@ function NotConnected({
   const label = providers[provider].label;
   return (
     <div className="token-item">
-      {error ? (
-        <span className="token-item-name error-text">Could not read the token: {error}</span>
-      ) : (
-        <span className="token-item-name muted">Not connected</span>
-      )}
+      {error && <span className="token-item-name error-text">Could not read the token: {error}</span>}
       <button type="button" className="btn" onClick={() => onConnect(provider)}>
         Connect {label}
       </button>
@@ -638,7 +636,7 @@ function OwnerTokens({ owners, open, onChanged }: { owners: OwnerToken[]; open: 
         />
         <button
           type="submit"
-          className="btn btn-primary"
+          className="btn"
           disabled={busy || owner.trim().length === 0 || token.trim().length === 0}
         >
           {busy ? 'Verifying…' : replacing ? 'Replace' : 'Add'}
@@ -676,6 +674,20 @@ function updateStatus(state: Updates['state']): string | null {
   }
 }
 
+function AccountHeading({ name, connected, unreadable }: { name: string; connected: boolean; unreadable: boolean }) {
+  // A token that could not be read is not the same as none: say so.
+  const [cls, text] = unreadable ? ['badge-bad', 'Unavailable'] : connected ? ['badge-ok', 'Connected'] : ['badge-muted', 'Not connected'];
+  return (
+    <h4 className="account-heading">
+      {name}
+      <span className={`badge ${cls}`}>
+        {connected && !unreadable && <Icon name="check" size={12} />}
+        {text}
+      </span>
+    </h4>
+  );
+}
+
 function UpdateSettings({ config, update, updates }: { config: DashboardConfig; update: Update; updates: Updates }) {
   const { state } = updates;
   const status = updateStatus(state);
@@ -683,9 +695,11 @@ function UpdateSettings({ config, update, updates }: { config: DashboardConfig; 
   return (
     <section className="settings-section">
       <h3>Updates</h3>
+      <div className="settings-group">
       <label className="check">
         <input
           type="checkbox"
+          className="switch"
           checked={config.updates}
           onChange={(e) => {
             const updatesOn = e.target.checked;
@@ -708,6 +722,7 @@ function UpdateSettings({ config, update, updates }: { config: DashboardConfig; 
             {status}
           </span>
         )}
+      </div>
       </div>
     </section>
   );
@@ -770,7 +785,7 @@ export function SettingsPanel({
         <header className="settings-header">
           <h2>Settings</h2>
           <button type="button" className="icon-btn" aria-label="Close settings" onClick={onClose}>
-            ✕
+            <Icon name="x" size={16} />
           </button>
         </header>
 
@@ -781,14 +796,16 @@ export function SettingsPanel({
 
         <section className="settings-section">
           <h3>Needs you</h3>
+          <div className="settings-group">
           <label className="check">
-            <input type="checkbox" checked={inbox.enabled} onChange={(e) => setInbox({ enabled: e.target.checked })} />
+            <input type="checkbox" className="switch" checked={inbox.enabled} onChange={(e) => setInbox({ enabled: e.target.checked })} />
             Show sidebar
           </label>
           <fieldset disabled={!inbox.enabled} className="plain">
             <label className="check">
               <input
                 type="checkbox"
+                className="switch"
                 checked={inbox.reviewRequests}
                 onChange={(e) => setInbox({ reviewRequests: e.target.checked })}
               />
@@ -797,12 +814,13 @@ export function SettingsPanel({
             <label className="check">
               <input
                 type="checkbox"
+                className="switch"
                 checked={inbox.myPullRequests}
                 onChange={(e) => setInbox({ myPullRequests: e.target.checked })}
               />
               Your pull requests
             </label>
-            <label className="inline-field nested-field">
+            <label className="inline-field">
               Group by
               <select
                 value={config.layout.groupMyPullRequests}
@@ -820,13 +838,14 @@ export function SettingsPanel({
               </select>
             </label>
             <label className="check">
-              <input type="checkbox" checked={inbox.assigned} onChange={(e) => setInbox({ assigned: e.target.checked })} />
+              <input type="checkbox" className="switch" checked={inbox.assigned} onChange={(e) => setInbox({ assigned: e.target.checked })} />
               Assigned to you
             </label>
             <NumberField label="Items per group" value={inbox.limit} onChange={(limit) => setInbox({ limit })} />
             <label className="check">
               <input
                 type="checkbox"
+                className="switch"
                 checked={config.notifications}
                 onChange={(e) => {
                   const notifications = e.target.checked;
@@ -839,6 +858,7 @@ export function SettingsPanel({
               Desktop notifications for new items
             </label>
           </fieldset>
+          </div>
           <p className="hint">
             Fetched from every connected service. On GitHub, that is the default token plus any per-owner tokens
             that belong to the same account; items only visible to a token for another account are not shown.
@@ -847,6 +867,7 @@ export function SettingsPanel({
 
         <section className="settings-section">
           <h3>General</h3>
+          <div className="settings-group">
           <label className="inline-field">
             Refresh
             <select
@@ -860,29 +881,32 @@ export function SettingsPanel({
               ))}
             </select>
           </label>
-          <label className="inline-field">
-            Theme
-            <select
-              value={config.theme}
-              onChange={(e) => {
-                const theme = THEMES.find((t) => t === e.target.value);
-                if (theme) update((c) => ({ ...c, theme }));
-              }}
-            >
+          <fieldset className="inline-field theme-field">
+            <legend>Theme</legend>
+            <div className="segmented">
               {THEMES.map((t) => (
-                <option key={t} value={t}>
+                <label key={t} className="segment">
+                  <input
+                    type="radio"
+                    name="theme"
+                    value={t}
+                    checked={config.theme === t}
+                    onChange={() => update((c) => ({ ...c, theme: t }))}
+                  />
                   {t[0]!.toUpperCase() + t.slice(1)}
-                </option>
+                </label>
               ))}
-            </select>
-          </label>
+            </div>
+          </fieldset>
+          </div>
         </section>
 
         {updates && <UpdateSettings config={config} update={update} updates={updates} />}
 
         <section className="settings-section">
           <h3>Access tokens</h3>
-          <h4>GitHub</h4>
+          <div className="settings-group account">
+          <AccountHeading name="GitHub" connected={!!accounts.github?.hasDefault} unreadable={!!accountErrors.github} />
           {accounts.github?.hasDefault ? (
             <>
               <p>
@@ -923,7 +947,9 @@ export function SettingsPanel({
               )}
             </>
           )}
-          <h4>GitLab</h4>
+          </div>
+          <div className="settings-group account">
+          <AccountHeading name="GitLab" connected={!!accounts.gitlab?.hasDefault} unreadable={!!accountErrors.gitlab} />
           {accounts.gitlab?.hasDefault ? (
             <>
               <p>
@@ -936,6 +962,7 @@ export function SettingsPanel({
           ) : (
             <NotConnected provider="gitlab" error={accountErrors.gitlab} onConnect={onChangeToken} />
           )}
+          </div>
         </section>
 
         <section className="settings-section">

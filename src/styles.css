@@ -124,6 +124,7 @@ input, select, textarea {
   border-radius: var(--radius-sm);
   padding: 6px 10px;
 }
+select { padding: 5px 8px; }
 input:hover, select:hover, textarea:hover { border-color: var(--border-strong); }
 input:focus-visible, select:focus-visible, textarea:focus-visible { outline-offset: 0; border-color: var(--accent); border-radius: var(--radius-sm); }
 input::placeholder, textarea::placeholder { color: var(--faint); }
@@ -539,7 +540,10 @@ details .help-list { margin-top: 8px; }
   border-radius: 7px;
   cursor: pointer;
 }
-.segment[aria-pressed='true'] { background: var(--surface); color: var(--text); box-shadow: 0 1px 2px rgb(0 0 0 / 0.12); }
+.segment[aria-pressed='true'], .segment:has(input:checked) { background: var(--surface); color: var(--text); box-shadow: 0 1px 2px rgb(0 0 0 / 0.12); }
+label.segment { padding: 3px 12px; font-size: 12.5px; }
+.segment > input[type='radio'] { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; pointer-events: none; }
+.segment:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 1px; }
 .url-text { word-break: break-all; user-select: all; }
 .actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
 
@@ -552,24 +556,113 @@ details .help-list { margin-top: 8px; }
   padding: 0;
   border: 0;
   border-left: 1px solid var(--border);
-  background: var(--surface);
+  background: var(--bg);
   color: var(--text);
   box-shadow: var(--shadow-lg);
 }
-.settings::backdrop { background: rgb(0 0 0 / 0.3); }
-.settings-inner { padding: 20px; }
-.settings-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
-.settings-header h2 { font-size: 17px; }
-.settings-section { border-top: 1px solid var(--border); padding: 18px 0; display: grid; gap: 10px; }
-.settings-section h3 { font-size: 14px; }
-.settings-section h4 { font-size: 13px; color: var(--muted); margin-top: 4px; }
+.settings::backdrop { background: rgb(0 0 0 / 0.28); }
+.settings-inner { padding: 0 20px 24px; }
+.settings-header {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 -20px;
+  padding: 14px 14px 14px 20px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+.settings-header h2 { font-size: 15px; font-weight: 620; }
+.settings-section { padding: 20px 0 0; display: grid; gap: 8px; }
+.settings-section > h3 { font-size: 12.5px; font-weight: 600; color: var(--muted); padding-left: 2px; }
+.settings-section h4 { font-size: 12px; font-weight: 600; color: var(--muted); margin-top: 6px; }
 .settings-section p { margin: 0; }
+.settings-section > .hint { font-size: 12px; padding: 0 2px; }
+
+/* A white card of rows: label on the left, its control on the right. */
+.settings-group {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.settings-group > .check, .settings-group > .inline-field, .settings-group > .update-row,
+.settings-group > fieldset.plain > .check, .settings-group > fieldset.plain > .inline-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 44px;
+  margin: 0;
+  padding: 7px 14px;
+  color: var(--text);
+}
+.settings-group > * + *, .settings-group > fieldset.plain > * { border-top: 1px solid var(--border-soft); }
+.settings-group > .check { flex-direction: row-reverse; font-weight: 500; }
+.settings-group > fieldset.plain > .check { flex-direction: row-reverse; }
+/* The sidebar's options sit under "Show sidebar". */
+.settings-group > fieldset.plain > .check, .settings-group > fieldset.plain > .inline-field { padding-left: 30px; }
+.settings-group .inline-field input[type='number'] { width: 64px; text-align: right; }
+.settings-group > .update-row { flex-wrap: wrap; justify-content: flex-start; }
+.settings-group > .update-row > .btn { order: 2; margin-left: auto; }
+
+/* Checkboxes drawn as switches. They stay checkboxes for assistive tech. */
+input[type='checkbox'].switch {
+  appearance: none;
+  flex: none;
+  position: relative;
+  width: 32px;
+  height: 18px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 9px;
+  background: var(--border-strong);
+  cursor: pointer;
+  transition: background 120ms;
+}
+input[type='checkbox'].switch::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.2);
+  transition: transform 120ms;
+}
+input[type='checkbox'].switch:checked { background: var(--ok); }
+input[type='checkbox'].switch:checked::after { transform: translateX(14px); }
+input[type='checkbox'].switch:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 9px; }
+input[type='checkbox'].switch:disabled { cursor: default; }
+@media (prefers-reduced-motion: reduce) { input[type='checkbox'].switch, input[type='checkbox'].switch::after { transition: none; } }
+input[type='checkbox']:not(.switch) { accent-color: var(--primary); width: 15px; height: 15px; margin: 0; }
+
+fieldset.plain { border: 0; padding: 0; margin: 0; min-width: 0; }
+fieldset.plain:disabled > * { opacity: 0.5; }
+
+.theme-field { border-width: 0; margin: 0; min-width: 0; }
+.settings-group > .theme-field + *, .settings-group > * + .theme-field { border-top: 1px solid var(--border-soft); }
+.theme-field > legend { float: left; padding: 0; }
+.theme-field > .segmented { margin-left: auto; }
 
 .token-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
-.token-item { display: flex; align-items: center; gap: 6px; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 4px 6px 4px 10px; }
+.token-item { display: flex; align-items: center; gap: 6px; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 4px 6px 4px 10px; background: var(--surface); }
 .token-item-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .token-form { display: flex; gap: 8px; flex-wrap: wrap; }
 .token-form input { flex: 1 1 140px; min-width: 0; }
+.account { display: grid; gap: 8px; padding: 12px 14px 14px; }
+.account > * + * { border-top: 0; }
+.account .actions { justify-content: flex-start; }
+.account .token-item { border: 0; padding: 0; justify-content: space-between; }
+.account-heading { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 13.5px; font-weight: 620; color: var(--text); }
+.account .hint { margin: 0; font-size: 12px; }
+
 .add-repo { display: flex; gap: 8px; }
 .add-repo .combobox { flex: 1; min-width: 0; }
 .combobox { position: relative; }
@@ -598,21 +691,37 @@ details .help-list { margin-top: 8px; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.combobox-option[aria-selected='true'] { background: var(--info-bg); }
-.repo-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
-.repo-item { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 4px 6px 4px 10px; }
-.repo-item-row { display: flex; align-items: center; gap: 2px; }
-.repo-item-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.repo-item-name .badge { margin-left: 6px; }
-.widget-editor { padding: 6px 4px 4px 18px; display: grid; gap: 6px; }
-.widget-settings { display: flex; gap: 12px; flex-wrap: wrap; padding: 2px 0 2px 22px; }
-.check { display: flex; align-items: center; gap: 6px; }
-.inline-field { display: flex; align-items: center; gap: 6px; color: var(--muted); }
+.combobox-option[aria-selected='true'] { background: var(--surface-2); }
+.repo-list { list-style: none; margin: 0; padding: 0; }
+.repo-item { padding: 4px 6px 4px 8px; }
+.repo-item + .repo-item { border-top: 1px solid var(--border-soft); }
+.repo-item-row { display: flex; align-items: center; gap: 2px; min-height: 32px; }
+.repo-item-name { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; font-weight: 500; }
+.repo-item-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.repo-item-label .owner { color: var(--muted); font-weight: 400; }
+.chevron-icon { color: var(--faint); }
+.widget-editor {
+  display: grid;
+  margin: 4px 4px 6px 22px;
+  padding: 2px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+}
+.widget-option { font-weight: 500; }
+.widget-option { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 14px; min-height: 38px; padding: 4px 0; }
+.widget-option + .widget-option { border-top: 1px solid var(--border-soft); }
+.widget-settings { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-left: auto; }
+.widget-settings { color: var(--muted); }
+.widget-editor .widget-settings input[type='number'] { width: 46px; text-align: right; }
+.widget-editor .widget-settings input[type='text'] { width: 86px; }
+.widget-settings input { padding: 3px 7px; }
+.check { display: flex; align-items: center; gap: 8px; }
+.inline-field { display: flex; align-items: center; gap: 8px; color: var(--muted); }
 .inline-field input[type='number'] { width: 60px; }
-.inline-field input[type='text'] { width: 120px; }
+.inline-field input[type='text'] { width: 110px; }
+.settings-group > .inline-field { color: var(--text); }
 .nested-field { padding-left: 24px; }
-fieldset.plain { border: 0; padding: 0 0 0 4px; margin: 0; display: grid; gap: 6px; }
-fieldset.plain:disabled { opacity: 0.55; }
 
 /* ---------- Item details ---------- */
 .row-button {

@@ -332,7 +332,8 @@ export function RepoDetails({ repo, result, loadLists, loadDetails, onClose }: {
   }, []);
 
   // Land on the list, where the arrow keys work, as soon as it has items:
-  // on open, or when the lists arrive after it.
+  // on open, or when the lists arrive after it, unless the user has started
+  // moving around the dialog by then (on the tabs, say).
   const hasItems = items.length > 0;
   const focusedList = useRef(false);
   useEffect(() => {
@@ -389,6 +390,8 @@ export function RepoDetails({ repo, result, loadLists, loadDetails, onClose }: {
   return (
     <dialog
       ref={dialog}
+      // Any key the user presses means focus is theirs to place from now on.
+      onKeyDownCapture={() => (focusedList.current = true)}
       className="repo-details"
       aria-label={`${fullName} pull requests and issues`}
       onClose={onClose}

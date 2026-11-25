@@ -113,6 +113,21 @@ describe('RepoDetails', () => {
     expect(prs.getAttribute('aria-selected')).toBe('true');
   });
 
+  it('leaves focus on the tabs when the lists arrive after the user moved there', async () => {
+    let resolve!: (r: RepoResult) => void;
+    setup({ card: ok(snapshot({ pullRequests: { total: 0, items: [] }, issues: { total: 0, items: [] } })), lists: new Promise((r) => (resolve = r)) });
+    const prs = screen.getByRole('tab', { name: /Pull requests/ });
+    prs.focus();
+    await userEvent.keyboard('{ArrowRight}');
+    const issuesTab = screen.getByRole('tab', { name: /Issues/ });
+    expect(document.activeElement).toBe(issuesTab);
+    resolve(ok(snapshot({ pullRequests: { total: 0, items: [] }, issues: { total: 2, items: issues } })));
+    await waitFor(() => expect(options()).toHaveLength(2));
+    expect(document.activeElement).toBe(issuesTab);
+    await userEvent.keyboard('{ArrowLeft}');
+    expect(document.activeElement).toBe(prs);
+  });
+
   it('says when a filter leaves nothing', async () => {
     setup({ lists: Promise.resolve(ok(snapshot({ pullRequests: { total: 1, items: [prs[1]!] } }))) });
     await waitFor(() => expect(options()).toHaveLength(1));

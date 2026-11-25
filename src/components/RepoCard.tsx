@@ -9,7 +9,7 @@ import { Collapsible } from './Collapsible';
 import { ExternalLink } from './ExternalLink';
 import { IssueRow, PullRequestRow } from './ItemRows';
 import { Icon } from './Icons';
-import { CI_META } from './StatusIcons';
+import { CiBadge } from './StatusIcons';
 
 /** Entries a list widget shows while its card is being resized by `delta`. */
 function shown(widget: { limit: number }, delta: number): number {
@@ -118,12 +118,7 @@ function StatusBadge({ result }: { result: RepoResult | undefined }) {
     );
   }
   const ci = result.data.ci;
-  if (!ci) return null;
-  return (
-    <span className={`status-badge status-${ci}`} aria-hidden="true">
-      <Icon name={CI_META[ci].icon} size={12} />
-    </span>
-  );
+  return ci ? <CiBadge state={ci} branch={result.data.defaultBranch} /> : null;
 }
 
 function fallbackUrl(repo: PinnedRepo): string {
@@ -200,10 +195,9 @@ export function RepoCard({ repo, result, collapsedWidgets, onToggleWidget, onExp
         {repo.provider === 'gitlab' && <span className="badge badge-muted">GitLab</span>}
         {data?.isArchived && <span className="badge badge-muted">Archived</span>}
         {data?.ci && (
-          <span className="card-ci" title={`CI on ${data.defaultBranch ?? 'default branch'}`}>
-            <span className={`card-status ci-${data.ci}`}>{CI_META[data.ci].word}</span>
+          <span className="card-ci">
             {data.defaultBranch && (
-              <span className="branch">
+              <span className="branch" title="Default branch">
                 <Icon name="branch" size={12} />
                 {data.defaultBranch}
               </span>

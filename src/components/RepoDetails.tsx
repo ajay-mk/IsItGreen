@@ -10,7 +10,7 @@ import { ExternalLink } from './ExternalLink';
 import { Icon } from './Icons';
 import { itemOf, REVIEWER_TEXT, useDetails, type Item, type LoadDetails } from './ItemDetails';
 import { LabelChips } from './ItemRows';
-import { CI_META, CiIcon, ReviewBadge } from './StatusIcons';
+import { CI_META, CiBadge, CiIcon, ReviewBadge } from './StatusIcons';
 
 type Tab = 'pr' | 'issue';
 type PrFilter = 'all' | 'attention' | 'drafts';
@@ -363,11 +363,7 @@ export function RepoDetails({ repo, result, loadLists, loadDetails, onClose }: {
       }}
     >
       <header className="repo-details-header">
-        {ci && (
-          <span className={`status-badge status-${ci}`} aria-hidden="true">
-            <Icon name={CI_META[ci].icon} size={12} />
-          </span>
-        )}
+        {ci && <CiBadge state={ci} branch={data?.defaultBranch} />}
         <h2 className="card-title">
           <span className="owner">{repo.owner}/</span>
           {repo.name}
@@ -377,15 +373,10 @@ export function RepoDetails({ repo, result, loadLists, loadDetails, onClose }: {
             <Icon name="lock" size={12} />
           </span>
         )}
-        {ci && (
-          <span className={`card-status ci-${ci}`}>
-            {CI_META[ci].word}
-            {data?.defaultBranch && (
-              <span className="branch">
-                <Icon name="branch" size={12} />
-                {data.defaultBranch}
-              </span>
-            )}
+        {data?.defaultBranch && (
+          <span className="branch" title="Default branch">
+            <Icon name="branch" size={12} />
+            {data.defaultBranch}
           </span>
         )}
         <span className="repo-details-actions">

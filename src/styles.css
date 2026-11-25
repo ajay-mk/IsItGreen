@@ -106,8 +106,10 @@ html, body, #root { height: 100%; }
    the pop-up's header along with whatever was being scrolled. */
 html, body { overscroll-behavior: none; }
 /* Scrolling stays in the area under the pointer instead of carrying over to
-   the window once that area reaches its end. */
-.content, .sidebar, .card-body, .split-items, .split-detail-body { overscroll-behavior: contain; }
+   the window once that area reaches its end. Cards are left out: a card
+   should pass its scroll on to the dashboard, and `contain` would stop that
+   even when the card has nothing to scroll. */
+.content, .sidebar, .split-items, .split-detail-body { overscroll-behavior: contain; }
 body {
   margin: 0;
   background: var(--bg);

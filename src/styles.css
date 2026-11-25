@@ -833,8 +833,6 @@ fieldset.plain:disabled > * { opacity: 0.5; }
   cursor: pointer;
 }
 .split-tab:hover { color: var(--text); }
-/* A thin divider between the two halves. */
-.split-tab + .split-tab { box-shadow: inset 1px 0 0 var(--border); }
 .split-tab:focus-visible { outline-offset: -2px; }
 .split-tab[aria-selected='true'] { color: var(--text); }
 .split-tab[aria-selected='true']::after {

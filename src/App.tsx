@@ -3,6 +3,7 @@ import logo from './assets/logo.svg';
 import { Icon } from './components/Icons';
 import { InboxPanel } from './components/InboxPanel';
 import { RepoCard } from './components/RepoCard';
+import { RepoDetails, withFullLists, type LoadLists } from './components/RepoDetails';
 import { SettingsPanel } from './components/SettingsPanel';
 import { TokenSetup } from './components/TokenSetup';
 import { UpdateBanner } from './components/UpdateBanner';
@@ -137,6 +138,17 @@ export default function App() {
   const rejectedNotice = tokenRejected
     ? []
     : dash.rejected.map((p) => `Your ${providers[p].label} token was rejected or has expired. Replace it in Settings.`);
+
+  // The repo whose pull requests and issues are open in a dialog, and the
+  // button that opened it, which gets focus back when it closes.
+  const [detailsFor, setDetailsFor] = useState<{ id: string; opener: HTMLElement } | null>(null);
+  const loadLists = useCallback<LoadLists>(
+    (repo) =>
+      providers[repo.provider]
+        .fetchRepos([withFullLists(repo)], repo.provider === 'github' ? tokenOwners : [])
+        .then((batch) => batch.repos.get(repoId(repo))),
+    [tokenOwners],
+  );
 
   const repoIds = useMemo(() => config.repos.map(repoId), [config.repos]);
   const reposById = useMemo(() => new Map(config.repos.map((r) => [repoId(r), r])), [config.repos]);
@@ -409,6 +421,7 @@ export default function App() {
                       )
                     }
                     result={result}
+                    onExpand={(button) => setDetailsFor({ id, opener: button })}
                     collapsedWidgets={collapsedWidgets}
                     onToggleWidget={(type) => {
                       const key = widgetKey(repo, type);
@@ -432,6 +445,19 @@ export default function App() {
           </>
         )}
       </main>
+
+      {detailsFor && reposById.get(detailsFor.id) && (
+        <RepoDetails
+          repo={reposById.get(detailsFor.id)!}
+          result={dash.repos.get(detailsFor.id)}
+          loadLists={loadLists}
+          loadDetails={loadDetails}
+          onClose={() => {
+            detailsFor.opener.focus();
+            setDetailsFor(null);
+          }}
+        />
+      )}
 
       <SettingsPanel
         open={settingsOpen}

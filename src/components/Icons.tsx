@@ -6,17 +6,20 @@
 
 import {
   ArrowDown,
+  ArrowRight,
   ArrowUp,
   Check,
   ChevronDown,
   ChevronRight,
   CircleDot,
   Clock,
+  ExternalLink,
   Eye,
   GitBranch,
   GitPullRequest,
   GripVertical,
   Lock,
+  Maximize2,
   Minus,
   PanelRight,
   RefreshCw,
@@ -45,6 +48,9 @@ const ICONS = {
   grip: GripVertical,
   up: ArrowUp,
   down: ArrowDown,
+  arrowRight: ArrowRight,
+  external: ExternalLink,
+  expand: Maximize2,
 } satisfies Record<string, LucideIcon>;
 
 export type IconName = keyof typeof ICONS;

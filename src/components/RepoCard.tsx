@@ -145,12 +145,14 @@ function RepoErrorText({ error }: { error: RepoError }) {
   );
 }
 
-export function RepoCard({ repo, result, collapsedWidgets, onToggleWidget, handle, dragging = false, span = 1, rows, resize = null, grip }: {
+export function RepoCard({ repo, result, collapsedWidgets, onToggleWidget, onExpand, handle, dragging = false, span = 1, rows, resize = null, grip }: {
   repo: PinnedRepo;
   result: RepoResult | undefined;
   /** Widget types collapsed on this card. */
   collapsedWidgets: readonly WidgetType[];
   onToggleWidget: (type: WidgetType) => void;
+  /** Opens the repo's pull requests and issues in a dialog; gets the button, to return focus to. */
+  onExpand?: (button: HTMLButtonElement) => void;
   /** Drag handle for reordering the cards, shown at the start of the header. */
   handle?: ReactNode;
   /** Whether this card is being dragged. */
@@ -207,6 +209,17 @@ export function RepoCard({ repo, result, collapsedWidgets, onToggleWidget, handl
               </span>
             )}
           </span>
+        )}
+        {onExpand && (
+          <button
+            type="button"
+            className="icon-btn card-expand"
+            aria-label={`Pull requests and issues of ${repo.owner}/${repo.name}`}
+            title="Details"
+            onClick={(e) => onExpand(e.currentTarget)}
+          >
+            <Icon name="expand" size={14} />
+          </button>
         )}
       </header>
 

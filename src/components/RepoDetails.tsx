@@ -329,9 +329,18 @@ export function RepoDetails({ repo, result, loadLists, loadDetails, onClose }: {
   useEffect(() => {
     const d = dialog.current;
     if (d && !d.open) d.showModal();
-    // Land on the list, where the arrow keys work.
-    list.current?.focus();
   }, []);
+
+  // Land on the list, where the arrow keys work, as soon as it has items:
+  // on open, or when the lists arrive after it.
+  const hasItems = items.length > 0;
+  const focusedList = useRef(false);
+  useEffect(() => {
+    if (hasItems && !focusedList.current) {
+      focusedList.current = true;
+      list.current?.focus();
+    }
+  }, [hasItems]);
 
   const optionId = (item: Item) => `repo-item-${item.kind}-${itemOf(item).number}`;
   const move = (delta: number) => {

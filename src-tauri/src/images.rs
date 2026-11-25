@@ -24,6 +24,8 @@ const IMAGE_HOSTS: &[&str] = &[
     "user-images.githubusercontent.com",
     // GitHub's image proxy, which fetches images from other sites for it.
     "camo.githubusercontent.com",
+    // Public repositories only: private raw files need a token, which is
+    // never sent, so they stay links.
     "raw.githubusercontent.com",
     "objects.githubusercontent.com",
     "avatars.githubusercontent.com",

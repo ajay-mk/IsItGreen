@@ -784,10 +784,9 @@ fieldset.plain:disabled > * { opacity: 0.5; }
 .details-actions .btn-primary:hover { color: var(--accent-fg); }
 
 /* ---------- Repo details pop-up ---------- */
-.card-expand { width: 24px; height: 24px; margin-right: -6px; opacity: 0; color: var(--faint); }
+.card-expand { width: 24px; height: 24px; margin-left: auto; margin-right: -6px; opacity: 0; color: var(--faint); }
 .card:hover .card-expand, .card-expand:focus-visible { opacity: 1; }
-/* Without CI the status sits elsewhere, so the button keeps to the end. */
-.card-header .card-expand:first-of-type { margin-left: auto; }
+/* After the branch, the branch takes the free space; without it, the button does. */
 .card-ci + .card-expand { margin-left: 0; }
 
 .repo-details {

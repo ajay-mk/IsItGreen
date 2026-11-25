@@ -89,6 +89,15 @@ const SCHEMA: SanitizeSchema = {
   },
 };
 
+/** A URL in the form `new URL()` gives, for comparing addresses written differently. */
+function normalise(url: string): string | null {
+  try {
+    return new URL(url).toString();
+  } catch {
+    return null;
+  }
+}
+
 /** UUIDs name GitHub attachments, both in the link and in its signed form. */
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 
@@ -99,7 +108,7 @@ const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
  * address itself, if it is on GitHub's image hosts.
  */
 function imageSource(url: string, images: readonly ImageSource[]): string | null {
-  const proxied = images.find((i) => i.canonical === url);
+  const proxied = images.find((i) => i.canonical !== null && normalise(i.canonical) === url);
   if (proxied && isImageUrl(proxied.src)) return proxied.src;
   const id = UUID.exec(url)?.[0].toLowerCase();
   const signed = id ? images.find((i) => i.src.toLowerCase().includes(id)) : undefined;
@@ -111,10 +120,26 @@ function imageSource(url: string, images: readonly ImageSource[]): string | null
 const loaded = new Map<string, Promise<string>>();
 const MAX_LOADED = 40;
 
+/** Images fetched at once, so a description full of them does not fire them all together. */
+const MAX_FETCHES = 3;
+let fetching = 0;
+const waiting: (() => void)[] = [];
+
+async function throttled(src: string): Promise<string> {
+  if (fetching >= MAX_FETCHES) await new Promise<void>((go) => waiting.push(go));
+  fetching++;
+  try {
+    return await fetchImage(src);
+  } finally {
+    fetching--;
+    waiting.shift()?.();
+  }
+}
+
 function load(src: string): Promise<string> {
   let hit = loaded.get(src);
   if (!hit) {
-    hit = fetchImage(src);
+    hit = throttled(src);
     hit.catch(() => loaded.delete(src));
     loaded.set(src, hit);
     // Drop the oldest, so a long session does not keep every image.

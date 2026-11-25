@@ -65,7 +65,7 @@ describe('RepoCard', () => {
     const repo = pinned('octo', 'repo', { widgets: [{ type: 'pullRequests', limit: 5, hideDrafts: true }] });
     render(<RepoCard {...noLayout} repo={repo} result={ok(snapshot({ pullRequests: { total: 2, items: [] } }))} />);
     expect(within(card()).getByRole('heading', { name: /Pull requests/ }).textContent).toContain('2');
-    expect(within(card()).getByText('Only drafts are open; drafts are hidden')).toBeTruthy();
+    expect(within(card()).getByText('Drafts are hidden; nothing else to show')).toBeTruthy();
   });
 
   it('renders API text as text, never as markup', () => {

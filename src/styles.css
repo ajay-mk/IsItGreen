@@ -61,7 +61,8 @@
     --warn-bg: rgb(227 179 65 / 0.13);
     --pending-bg: rgb(227 179 65 / 0.13);
     --info-bg: rgb(122 167 255 / 0.13);
-    --shadow: none;
+    /* Not `none`: it is also used inside shadow lists, where `none` is invalid. */
+    --shadow: 0 0 transparent;
     --shadow-lg: 0 12px 32px rgb(0 0 0 / 0.5);
     color-scheme: dark;
   }
@@ -92,7 +93,8 @@
   --warn-bg: rgb(227 179 65 / 0.13);
   --pending-bg: rgb(227 179 65 / 0.13);
   --info-bg: rgb(122 167 255 / 0.13);
-  --shadow: none;
+  /* Not `none`: it is also used inside shadow lists, where `none` is invalid. */
+  --shadow: 0 0 transparent;
   --shadow-lg: 0 12px 32px rgb(0 0 0 / 0.5);
   color-scheme: dark;
 }
@@ -127,7 +129,7 @@ input, select, textarea {
 select { padding: 5px 8px; }
 input:hover, select:hover, textarea:hover { border-color: var(--border-strong); }
 input:focus-visible, select:focus-visible, textarea:focus-visible { outline-offset: 0; border-color: var(--accent); border-radius: var(--radius-sm); }
-input::placeholder, textarea::placeholder { color: var(--faint); }
+input::placeholder, textarea::placeholder { color: var(--muted); }
 textarea { width: 100%; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
 
 .btn {
@@ -169,7 +171,7 @@ textarea { width: 100%; resize: vertical; font-family: ui-monospace, SFMono-Regu
 @media (prefers-reduced-motion: reduce) { .icon-btn.spinning .icon { animation: none; } }
 .link-btn { font: inherit; color: var(--text); background: none; border: 0; padding: 0; cursor: pointer; text-align: left; }
 
-.empty { color: var(--faint); margin: 6px 0; }
+.empty { color: var(--muted); margin: 6px 0; }
 .error-text { color: var(--bad); margin: 6px 0; }
 .notice { color: var(--muted); font-size: 12px; margin: 6px 0; }
 .ok-text { color: var(--ok); margin: 6px 0; }
@@ -311,7 +313,7 @@ textarea { width: 100%; resize: vertical; font-family: ui-monospace, SFMono-Regu
   cursor: pointer;
 }
 .section-toggle:hover { color: var(--text); }
-.count { color: var(--faint); font-weight: 500; font-variant-numeric: tabular-nums; }
+.count { color: var(--muted); font-weight: 500; font-variant-numeric: tabular-nums; }
 /* Shown where the section can be folded: on hover, on focus, or while folded. */
 .chevron { color: var(--faint); opacity: 0; transition: opacity 120ms; }
 .card:hover .chevron, .sidebar:hover .chevron, .section-toggle:focus-visible .chevron,
@@ -459,8 +461,8 @@ textarea { width: 100%; resize: vertical; font-family: ui-monospace, SFMono-Regu
 .row-draft .row-title { color: var(--muted); }
 .row-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .row-title .row-num { display: inline-block; min-width: 30px; margin-right: 6px; }
-.row-num { flex: none; color: var(--faint); font-variant-numeric: tabular-nums; }
-.row-meta { flex: none; color: var(--faint); font-size: 12px; min-width: 26px; text-align: right; font-variant-numeric: tabular-nums; }
+.row-num { flex: none; color: var(--muted); font-variant-numeric: tabular-nums; }
+.row-meta { flex: none; color: var(--muted); font-size: 12px; min-width: 26px; text-align: right; font-variant-numeric: tabular-nums; }
 
 /* Sidebar items: the title on its own lines, the reference and state under it. */
 .row-stacked {

@@ -48,7 +48,7 @@ function Widget({ widget, data, collapsed, onToggle, delta, mergeRequests }: {
           {prs.items.length === 0 ? (
             <p className="empty">
               {prs.total > 0
-                ? 'Only drafts are open; drafts are hidden'
+                ? 'Drafts are hidden; nothing else to show'
                 : mergeRequests ? 'No open merge requests' : 'No open pull requests'}
             </p>
           ) : (

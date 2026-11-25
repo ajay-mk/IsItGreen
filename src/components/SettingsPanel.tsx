@@ -810,7 +810,8 @@ export function SettingsPanel({
             />
             Show sidebar
           </label>
-          <fieldset disabled={!inbox.enabled || config.layout.inboxHidden} className="plain">
+          {/* Hiding the sidebar keeps its lists and notifications on, so their options stay editable. */}
+          <fieldset disabled={!inbox.enabled} className="plain">
             <label className="check">
               <input
                 type="checkbox"

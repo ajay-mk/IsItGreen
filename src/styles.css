@@ -923,7 +923,9 @@ fieldset.plain:disabled > * { opacity: 0.5; }
 .markdown blockquote { padding: 0 0 0 12px; border-left: 3px solid var(--border-strong); color: var(--muted); }
 .markdown hr { border: 0; border-top: 1px solid var(--border); margin: 14px 0; }
 .markdown table { border-collapse: collapse; display: block; overflow-x: auto; font-size: 12.5px; }
-.markdown th, .markdown td { padding: 5px 10px; border: 1px solid var(--border); text-align: left; }
+/* `anywhere` above would let a column shrink to one character; in cells, words
+   stay whole and a table too wide for the pane scrolls sideways, as on GitHub. */
+.markdown th, .markdown td { padding: 5px 10px; border: 1px solid var(--border); text-align: left; overflow-wrap: break-word; }
 .markdown th { background: var(--surface-2); font-weight: 600; }
 .markdown .md-code { position: relative; margin: 0 0 10px; }
 .markdown .md-code pre { margin: 0; }

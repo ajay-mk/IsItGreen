@@ -128,6 +128,17 @@ describe('RepoDetails', () => {
     expect(document.activeElement).toBe(prs);
   });
 
+  it('leaves focus on a clicked tab when the lists arrive after it', async () => {
+    let resolve!: (r: RepoResult) => void;
+    setup({ card: ok(snapshot({ pullRequests: { total: 0, items: [] }, issues: { total: 0, items: [] } })), lists: new Promise((r) => (resolve = r)) });
+    const issuesTab = screen.getByRole('tab', { name: /Issues/ });
+    await userEvent.click(issuesTab);
+    expect(document.activeElement).toBe(issuesTab);
+    resolve(ok(snapshot({ pullRequests: { total: 0, items: [] }, issues: { total: 2, items: issues } })));
+    await waitFor(() => expect(options()).toHaveLength(2));
+    expect(document.activeElement).toBe(issuesTab);
+  });
+
   it('says when a filter leaves nothing', async () => {
     setup({ lists: Promise.resolve(ok(snapshot({ pullRequests: { total: 1, items: [prs[1]!] } }))) });
     await waitFor(() => expect(options()).toHaveLength(1));

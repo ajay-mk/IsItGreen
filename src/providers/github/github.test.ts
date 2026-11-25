@@ -463,6 +463,11 @@ describe('mapDetails', () => {
     expect(mapDetails({ __typename: 'Issue' })!.images).toEqual([]);
   });
 
+  it('keeps the indentation of a description that opens with a code block', () => {
+    const d = mapDetails({ __typename: 'Issue', body: '\r\n\n    first()\n    second()\n\n' })!;
+    expect(d.markdown).toBe('    first()\n    second()');
+  });
+
   it('caps very long Markdown descriptions', () => {
     const d = mapDetails({ __typename: 'Issue', body: 'y'.repeat(MARKDOWN_CHARS + 50) })!;
     expect(d.markdown.length).toBe(MARKDOWN_CHARS);

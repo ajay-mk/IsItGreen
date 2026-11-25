@@ -97,6 +97,22 @@ describe('RepoDetails', () => {
     expect(screen.queryByRole('group', { name: 'Filter' })).toBeNull();
   });
 
+  it('switches tabs with the arrow keys and labels the panel by the selected tab', async () => {
+    setup();
+    await waitFor(() => expect(options()).toHaveLength(3));
+    const prs = screen.getByRole('tab', { name: /Pull requests/ });
+    const issuesTab = screen.getByRole('tab', { name: /Issues/ });
+    expect([prs.tabIndex, issuesTab.tabIndex]).toEqual([0, -1]);
+    prs.focus();
+    await userEvent.keyboard('{ArrowRight}');
+    expect(issuesTab.getAttribute('aria-selected')).toBe('true');
+    expect(document.activeElement).toBe(issuesTab);
+    expect(screen.getByRole('tabpanel').getAttribute('aria-labelledby')).toBe(issuesTab.id);
+    expect(options()).toHaveLength(2);
+    await userEvent.keyboard('{ArrowRight}');
+    expect(prs.getAttribute('aria-selected')).toBe('true');
+  });
+
   it('says when a filter leaves nothing', async () => {
     setup({ lists: Promise.resolve(ok(snapshot({ pullRequests: { total: 1, items: [prs[1]!] } }))) });
     await waitFor(() => expect(options()).toHaveLength(1));

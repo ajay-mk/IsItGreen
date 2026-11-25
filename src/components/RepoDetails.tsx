@@ -360,6 +360,21 @@ export function RepoDetails({ repo, result, loadLists, loadDetails, onClose }: {
     e.preventDefault();
   };
 
+  const onTabKey = (e: KeyboardEvent) => {
+    const order: Tab[] = ['pr', 'issue'];
+    const at = order.indexOf(tab);
+    const next =
+      e.key === 'ArrowRight' ? order[(at + 1) % order.length]
+      : e.key === 'ArrowLeft' ? order[(at + order.length - 1) % order.length]
+      : e.key === 'Home' ? order[0]
+      : e.key === 'End' ? order[order.length - 1]
+      : undefined;
+    if (!next) return;
+    e.preventDefault();
+    setTab(next);
+    document.getElementById(`repo-details-tab-${next}`)?.focus();
+  };
+
   const prTotal = data?.pullRequests?.total ?? 0;
   const issueTotal = data?.issues?.total ?? 0;
   const ci = data?.ci ?? null;
@@ -421,17 +436,27 @@ export function RepoDetails({ repo, result, loadLists, loadDetails, onClose }: {
             ] as const).map(([value, text, count]) => (
               <button
                 key={value}
+                id={`repo-details-tab-${value}`}
                 type="button"
                 role="tab"
                 className="split-tab"
                 aria-selected={tab === value}
-                aria-controls="repo-details-list"
+                aria-controls="repo-details-panel"
+                // Roving focus: Tab reaches the selected tab; arrows move between them.
+                tabIndex={tab === value ? 0 : -1}
                 onClick={() => setTab(value)}
+                onKeyDown={onTabKey}
               >
                 {text} <span className="count">{count}</span>
               </button>
             ))}
           </div>
+          <div
+            id="repo-details-panel"
+            className="split-panel"
+            role="tabpanel"
+            aria-labelledby={`repo-details-tab-${tab}`}
+          >
           {tab === 'pr' && (
             <div className="split-controls">
               <Segmented
@@ -480,6 +505,7 @@ export function RepoDetails({ repo, result, loadLists, loadDetails, onClose }: {
               Showing the {shownCount} most recently updated of {total}.
             </p>
           )}
+          </div>
           <p className="split-hint" aria-hidden="true">↑ ↓ select · Enter opens · Esc closes</p>
         </div>
         {shownDetail ? (

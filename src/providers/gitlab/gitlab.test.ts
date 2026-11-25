@@ -258,6 +258,11 @@ describe('mappers', () => {
     ]);
   });
 
+  it('keeps the indentation of a description that opens with a code block', () => {
+    const details = mapDetails({ issue: { description: '\n    make test\n' } })!;
+    expect(details.markdown).toBe('    make test');
+  });
+
   it('maps merge request details', () => {
     const details = mapDetails({
       mergeRequest: {
@@ -296,7 +301,7 @@ describe('mappers', () => {
     });
     expect(details).toMatchObject({
       body: 'Adds a cache. More.',
-      markdown: 'Adds   a cache.\n\nMore.',
+      markdown: '  Adds   a cache.\n\nMore.',
       comments: 3,
       assignees: ['jane.doe'],
       labels: [{ name: 'perf', color: '00ff00' }],

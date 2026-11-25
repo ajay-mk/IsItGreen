@@ -1015,3 +1015,4 @@ fieldset.plain:disabled > * { opacity: 0.5; }
 .split-columns .split-section > h4 { margin-bottom: 4px; }
 .split-columns .details-line, .split-columns .split-checks li, .split-columns .details-reviewers li { min-height: 24px; margin: 0; }
 .split-columns .split-checks, .split-columns .details-reviewers { gap: 0; }
+.split-panel { display: flex; flex-direction: column; flex: 1; min-height: 0; }

@@ -28,7 +28,9 @@ export const MARKDOWN_CHARS = 20_000;
 
 /** A Markdown description as written, cut to `MARKDOWN_CHARS`. */
 export function capMarkdown(v: unknown): string {
-  const text = (str(v) ?? '').replace(/\r\n?/g, '\n').trim();
+  // Leading spaces are kept (they can open an indented code block); only
+  // blank lines before the text and whitespace after it go.
+  const text = (str(v) ?? '').replace(/\r\n?/g, '\n').replace(/^(?:[ \t]*\n)+/, '').trimEnd();
   return text.length > MARKDOWN_CHARS ? `${text.slice(0, MARKDOWN_CHARS - 1).trimEnd()}…` : text;
 }
 

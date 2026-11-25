@@ -945,3 +945,48 @@ fieldset.plain:disabled > * { opacity: 0.5; }
 .markdown .md-alert-caution { --alert: var(--bad); }
 :root[data-theme='dark'] .markdown .md-alert-important { --alert: #a371f7; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme='light']) .markdown .md-alert-important { --alert: #a371f7; } }
+
+/* Syntax highlighting (highlight.js classes from rehype-highlight), GitHub-like. */
+.markdown {
+  --hl-keyword: #cf222e;
+  --hl-string: #0a3069;
+  --hl-comment: #6e7781;
+  --hl-number: #0550ae;
+  --hl-title: #8250df;
+  --hl-type: #953800;
+  --hl-add-bg: #dafbe1;
+  --hl-del-bg: #ffebe9;
+}
+:root[data-theme='dark'] .markdown {
+  --hl-keyword: #ff7b72;
+  --hl-string: #a5d6ff;
+  --hl-comment: #8b949e;
+  --hl-number: #79c0ff;
+  --hl-title: #d2a8ff;
+  --hl-type: #ffa657;
+  --hl-add-bg: rgb(46 160 67 / 0.15);
+  --hl-del-bg: rgb(248 81 73 / 0.15);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .markdown {
+    --hl-keyword: #ff7b72;
+    --hl-string: #a5d6ff;
+    --hl-comment: #8b949e;
+    --hl-number: #79c0ff;
+    --hl-title: #d2a8ff;
+    --hl-type: #ffa657;
+    --hl-add-bg: rgb(46 160 67 / 0.15);
+    --hl-del-bg: rgb(248 81 73 / 0.15);
+  }
+}
+.markdown .hljs-keyword, .markdown .hljs-selector-tag, .markdown .hljs-doctag, .markdown .hljs-template-tag { color: var(--hl-keyword); }
+.markdown .hljs-string, .markdown .hljs-regexp, .markdown .hljs-selector-attr, .markdown .hljs-selector-pseudo { color: var(--hl-string); }
+.markdown .hljs-comment, .markdown .hljs-quote { color: var(--hl-comment); font-style: italic; }
+.markdown .hljs-number, .markdown .hljs-literal, .markdown .hljs-attr, .markdown .hljs-attribute, .markdown .hljs-meta, .markdown .hljs-property, .markdown .hljs-selector-id, .markdown .hljs-selector-class, .markdown .hljs-symbol { color: var(--hl-number); }
+.markdown .hljs-title, .markdown .hljs-section, .markdown .hljs-name, .markdown .hljs-tag { color: var(--hl-title); }
+.markdown .hljs-type, .markdown .hljs-built_in, .markdown .hljs-variable, .markdown .hljs-params, .markdown .hljs-template-variable { color: var(--hl-type); }
+.markdown .hljs-addition, .markdown .hljs-deletion { display: inline-block; min-width: 100%; }
+.markdown .hljs-addition { background: var(--hl-add-bg); }
+.markdown .hljs-deletion { background: var(--hl-del-bg); }
+.markdown .hljs-emphasis { font-style: italic; }
+.markdown .hljs-strong { font-weight: 600; }

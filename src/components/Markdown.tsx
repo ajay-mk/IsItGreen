@@ -1,6 +1,7 @@
 import type { Element } from 'hast';
 import type { Blockquote, Paragraph, Root, RootContent } from 'mdast';
 import ReactMarkdown, { type Components } from 'react-markdown';
+import rehypeHighlight from 'rehype-highlight';
 import remarkGfm from 'remark-gfm';
 import { isSafeExternalUrl } from '../lib/url';
 import { ExternalLink } from './ExternalLink';
@@ -81,7 +82,8 @@ function resolve(href: string | undefined, base: string): string | null {
 
 /**
  * GitHub-flavoured Markdown from an API (a pull request or issue description),
- * rendered as React elements: tables, task lists, strikethrough and autolinks.
+ * rendered as React elements: tables, task lists, strikethrough, autolinks,
+ * GitHub's alerts, and code blocks highlighted by their language.
  *
  * The text is untrusted, so raw HTML in it is dropped rather than rendered,
  * and links only open where the rest of the app may (GitHub and the connected
@@ -135,7 +137,13 @@ export function Markdown({ source, base }: {
   };
   return (
     <div className="markdown">
-      <ReactMarkdown remarkPlugins={[remarkGfm, remarkAlerts]} skipHtml components={components}>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm, remarkAlerts]}
+        // Only fenced blocks that name their language: guessing would colour prose and logs.
+        rehypePlugins={[[rehypeHighlight, { detect: false }]]}
+        skipHtml
+        components={components}
+      >
         {source}
       </ReactMarkdown>
     </div>

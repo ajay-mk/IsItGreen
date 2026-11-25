@@ -51,6 +51,17 @@ describe('Markdown', () => {
     expect(diagram?.querySelector('pre')?.textContent).toContain('A-->B');
   });
 
+  it('highlights code in a named language, and only then', () => {
+    const md = show(['```rust', 'let n = 42; // answer', '```', '', '```', 'let n = 42;', '```', '', '```not-a-language', 'let n = 42;', '```'].join('\n'));
+    const [rust, plain, unknown] = [...md.querySelectorAll('pre code')];
+    expect(rust!.querySelector('.hljs-keyword')?.textContent).toBe('let');
+    expect(rust!.querySelector('.hljs-number')?.textContent).toBe('42');
+    expect(rust!.querySelector('.hljs-comment')?.textContent).toBe('// answer');
+    expect(plain!.querySelector('[class^="hljs-"]')).toBeNull();
+    expect(unknown!.querySelector('[class^="hljs-"]')).toBeNull();
+    expect(unknown!.textContent).toBe('let n = 42;\n');
+  });
+
   it('drops raw HTML instead of rendering it', () => {
     const md = show('Hi <img src=x onerror="window.__pwned=1"> there\n\n<!-- template note -->\n\n<script>alert(1)</script>');
     expect(md.querySelector('img, script')).toBeNull();

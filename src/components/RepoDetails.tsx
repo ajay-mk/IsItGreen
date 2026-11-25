@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import type { PinnedRepo } from '../config/schema';
 import { prNeedsAttention } from '../lib/health';
 import { openExternalUrl } from '../lib/transport';
@@ -10,8 +10,11 @@ import { ExternalLink } from './ExternalLink';
 import { Icon } from './Icons';
 import { itemOf, REVIEWER_TEXT, useDetails, type Item, type LoadDetails } from './ItemDetails';
 import { LabelChips } from './ItemRows';
-import { Markdown } from './Markdown';
 import { CI_META, CiBadge, CiIcon, ReviewBadge } from './StatusIcons';
+
+// The Markdown renderer and its syntax highlighting are most of the app's
+// size, and only descriptions here use them, so they load on first use.
+const Markdown = lazy(() => import('./Markdown').then((m) => ({ default: m.Markdown })));
 
 type Tab = 'pr' | 'issue';
 type PrFilter = 'all' | 'attention' | 'drafts';
@@ -252,7 +255,10 @@ function DetailPane({ item, load }: { item: Item; load: LoadDetails }) {
               <section className="split-section">
                 <h4 className="details-label">Description</h4>
                 {details.markdown ? (
-                  <Markdown source={details.markdown} base={base.url} />
+                  // Until the renderer loads, the plain-text excerpt stands in.
+                  <Suspense fallback={<p className="split-body">{details.body}</p>}>
+                    <Markdown source={details.markdown} base={base.url} />
+                  </Suspense>
                 ) : (
                   <p className="split-body">{details.body}</p>
                 )}

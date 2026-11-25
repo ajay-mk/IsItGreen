@@ -102,6 +102,12 @@
 /* ---------- Base ---------- */
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; }
+/* No rubber-band bounce of the whole window (macOS): it slid the top bar and
+   the pop-up's header along with whatever was being scrolled. */
+html, body { overscroll-behavior: none; }
+/* Scrolling stays in the area under the pointer instead of carrying over to
+   the window once that area reaches its end. */
+.content, .sidebar, .card-body, .split-items, .split-detail-body { overscroll-behavior: contain; }
 body {
   margin: 0;
   background: var(--bg);

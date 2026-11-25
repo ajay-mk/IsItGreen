@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { relaunch } from '@tauri-apps/plugin-process';
 import { check, type Update } from '@tauri-apps/plugin-updater';
-import { saveWindowState } from '../lib/transport';
+import { onCheckForUpdates, saveWindowState } from '../lib/transport';
 
 export type UpdateState =
   | { kind: 'idle' }
@@ -19,7 +19,16 @@ export interface Updates {
   state: UpdateState;
   /** Whether the banner was dismissed for the update it would show. */
   dismissed: boolean;
+  /**
+   * Whether the banner reports the current check's progress and outcome, as
+   * for a check started from the app menu, which has no other place to show it.
+   */
+  announced: boolean;
   checkNow: () => void;
+  /** A check started outside Settings, such as from the app menu. */
+  checkAnnounced: () => void;
+  /** Hides an announced outcome ("up to date", a failed check). */
+  clearAnnouncement: () => void;
   install: () => void;
   dismiss: () => void;
 }
@@ -43,6 +52,7 @@ function message(err: unknown): string {
 export function useUpdates(auto: boolean): Updates {
   const [state, setState] = useState<UpdateState>({ kind: 'idle' });
   const [dismissedVersion, setDismissedVersion] = useState<string | null>(null);
+  const [announced, setAnnounced] = useState(false);
   const update = useRef<Update | null>(null);
   // A check already on its way, which later checks wait for instead of
   // starting another.
@@ -154,8 +164,24 @@ export function useUpdates(auto: boolean): Updates {
     if (update.current) setDismissedVersion(update.current.version);
   }, []);
 
-  const checkNow = useCallback(() => void run(true), [run]);
+  const checkNow = useCallback(() => {
+    // Settings shows the outcome itself.
+    setAnnounced(false);
+    void run(true);
+  }, [run]);
+
+  const checkAnnounced = useCallback(() => {
+    setAnnounced(true);
+    // Asking again brings back an update the banner was dismissed for.
+    setDismissedVersion(null);
+    void run(true);
+  }, [run]);
+
+  const clearAnnouncement = useCallback(() => setAnnounced(false), []);
+
+  // "Check for Updates…" in the macOS app menu.
+  useEffect(() => onCheckForUpdates(checkAnnounced), [checkAnnounced]);
 
   const dismissed = state.kind === 'available' && state.version === dismissedVersion;
-  return { state, dismissed, checkNow, install, dismiss };
+  return { state, dismissed, announced, checkNow, checkAnnounced, clearAnnouncement, install, dismiss };
 }

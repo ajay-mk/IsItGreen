@@ -7,6 +7,8 @@ mod gitlab;
 mod graphql_guard;
 mod http;
 mod images;
+#[cfg(target_os = "macos")]
+mod menu;
 mod token;
 mod window_state;
 
@@ -69,7 +71,14 @@ pub fn run() {
 
     let tokens = Arc::clone(&state.tokens);
 
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    // Only macOS has an app menu; Windows and Linux keep a window without one.
+    #[cfg(target_os = "macos")]
+    let builder = builder
+        .menu(menu::build)
+        .on_menu_event(|app, event| menu::on_event(app, &event));
+
+    builder
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())

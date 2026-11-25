@@ -2,7 +2,8 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { relaunch } from '@tauri-apps/plugin-process';
 import { check, type DownloadEvent, type Update } from '@tauri-apps/plugin-updater';
 import { describe, expect, it, vi } from 'vitest';
-import { saveWindowState } from '../lib/transport';
+import { listen } from '@tauri-apps/api/event';
+import { CHECK_FOR_UPDATES_EVENT, saveWindowState } from '../lib/transport';
 import { CHECK_INTERVAL_MS, CHECK_TIMEOUT_MS, DOWNLOAD_TIMEOUT_MS, useUpdates } from './useUpdates';
 
 type Mock = ReturnType<typeof vi.fn>;
@@ -39,6 +40,40 @@ describe('useUpdates', () => {
     await act(async () => finish(null));
     expect(check).toHaveBeenCalledTimes(1);
     expect(result.current.state).toEqual({ kind: 'current' });
+  });
+
+  it('checks when the app menu asks, and announces the outcome', async () => {
+    let fire: () => void = () => undefined;
+    const stop = vi.fn();
+    vi.mocked(listen).mockImplementation((event, handler) => {
+      if (event === CHECK_FOR_UPDATES_EVENT) fire = () => handler({ event, id: 1, payload: null } as never);
+      return Promise.resolve(stop);
+    });
+    const { result, unmount } = renderHook(() => useUpdates(false));
+    await act(async () => {});
+    expect(result.current.announced).toBe(false);
+    act(() => fire());
+    expect(result.current.announced).toBe(true);
+    await waitFor(() => expect(result.current.state).toEqual({ kind: 'current' }));
+    act(() => result.current.clearAnnouncement());
+    expect(result.current.announced).toBe(false);
+    // A check from Settings shows its outcome there, not in the banner.
+    act(() => fire());
+    act(() => result.current.checkNow());
+    expect(result.current.announced).toBe(false);
+    unmount();
+    expect(stop).toHaveBeenCalled();
+  });
+
+  it('shows a dismissed update again when the menu asks', async () => {
+    vi.mocked(check).mockResolvedValue(fakeUpdate('1.2.0'));
+    const { result } = renderHook(() => useUpdates(true));
+    await waitFor(() => expect(result.current.state).toEqual({ kind: 'available', version: '1.2.0' }));
+    act(() => result.current.dismiss());
+    expect(result.current.dismissed).toBe(true);
+    act(() => result.current.checkAnnounced());
+    await waitFor(() => expect(result.current.state).toEqual({ kind: 'available', version: '1.2.0' }));
+    expect(result.current.dismissed).toBe(false);
   });
 
   it('does not check on its own when automatic checks are off', async () => {

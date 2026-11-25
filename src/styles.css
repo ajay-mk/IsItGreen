@@ -820,18 +820,22 @@ fieldset.plain:disabled > * { opacity: 0.5; }
 
 .repo-details-split { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(280px, 40%) minmax(0, 1fr); }
 .split-list { display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--border); background: var(--bg); }
-.split-tabs { display: flex; gap: 20px; padding: 0 16px; border-bottom: 1px solid var(--border); }
+.split-tabs { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid var(--border); }
 .split-tab {
   position: relative;
-  padding: 12px 0 10px;
+  padding: 12px 8px 10px;
   border: 0;
   background: none;
+  text-align: center;
   color: var(--muted);
   font: inherit;
   font-weight: 550;
   cursor: pointer;
 }
 .split-tab:hover { color: var(--text); }
+/* A thin divider between the two halves. */
+.split-tab + .split-tab { box-shadow: inset 1px 0 0 var(--border); }
+.split-tab:focus-visible { outline-offset: -2px; }
 .split-tab[aria-selected='true'] { color: var(--text); }
 .split-tab[aria-selected='true']::after {
   content: '';

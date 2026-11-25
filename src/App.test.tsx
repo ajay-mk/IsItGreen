@@ -231,7 +231,7 @@ describe('App', () => {
     render(<App />);
 
     await userEvent.click(await screen.findByRole('button', { name: 'Open settings' }));
-    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Theme' }), 'Dark');
+    await userEvent.click(screen.getByRole('radio', { name: 'Dark' }));
 
     await waitFor(() => expect(document.documentElement.dataset.theme).toBe('dark'));
     expect(JSON.parse(localStorage.getItem('isitgreen.config.v1')!)).toMatchObject({ theme: 'dark' });

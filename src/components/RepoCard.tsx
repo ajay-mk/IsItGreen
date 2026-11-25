@@ -8,7 +8,8 @@ import type { RepoError, RepoResult, RepoSnapshot } from '../providers/types';
 import { Collapsible } from './Collapsible';
 import { ExternalLink } from './ExternalLink';
 import { IssueRow, PullRequestRow } from './ItemRows';
-import { CiIcon } from './StatusIcons';
+import { Icon } from './Icons';
+import { CI_META } from './StatusIcons';
 
 /** Entries a list widget shows while its card is being resized by `delta`. */
 function shown(widget: { limit: number }, delta: number): number {
@@ -42,10 +43,14 @@ function Widget({ widget, data, collapsed, onToggle, delta, mergeRequests }: {
           count={prs.total}
           collapsed={collapsed}
           onToggle={onToggle}
-          badge={attention > 0 ? <span className="badge badge-bad">{attention} need attention</span> : null}
+          badge={attention > 0 ? <span className="attention">{attention} {attention === 1 ? 'needs' : 'need'} attention</span> : null}
         >
           {prs.items.length === 0 ? (
-            <p className="empty">{mergeRequests ? 'No open merge requests' : 'No open pull requests'}</p>
+            <p className="empty">
+              {prs.total > 0
+                ? 'Drafts are hidden; nothing else to show'
+                : mergeRequests ? 'No open merge requests' : 'No open pull requests'}
+            </p>
           ) : (
             <ul className="rows">
               {prs.items.slice(0, shown(widget, delta)).map((pr) => (
@@ -81,6 +86,44 @@ function Widget({ widget, data, collapsed, onToggle, delta, mergeRequests }: {
       );
     }
   }
+}
+
+/**
+ * One line for a card whose lists are all empty, instead of an empty section
+ * per list; `null` while any list has entries (or there are no lists).
+ */
+function allEmptyText(repo: PinnedRepo, data: RepoSnapshot): string | null {
+  const lists = repo.widgets.filter((w) => w.type !== 'ci');
+  if (lists.length === 0) return null;
+  // `total`, not just the entries shown: hidden drafts still count as open.
+  const empty = lists.every((w) => {
+    const list = w.type === 'pullRequests' ? data.pullRequests : data.issues;
+    return list?.total === 0 && list.items.length === 0;
+  });
+  if (!empty) return null;
+  const names = lists.map((w) =>
+    w.type === 'issues' ? (w.label ? `issues labeled ${w.label}` : 'issues') : repo.provider === 'gitlab' ? 'merge requests' : 'pull requests',
+  );
+  return `No open ${names.join(' or ')}`;
+}
+
+/** The header's status: CI on the default branch, or why there is none. */
+function StatusBadge({ result }: { result: RepoResult | undefined }) {
+  if (!result) return <span className="status-badge status-loading" aria-hidden="true" />;
+  if (!result.ok) {
+    return (
+      <span className="status-badge status-failure" role="img" aria-label="Could not load" title="Could not load">
+        <Icon name="x" size={12} />
+      </span>
+    );
+  }
+  const ci = result.data.ci;
+  if (!ci) return null;
+  return (
+    <span className={`status-badge status-${ci}`} aria-hidden="true">
+      <Icon name={CI_META[ci].icon} size={12} />
+    </span>
+  );
 }
 
 function fallbackUrl(repo: PinnedRepo): string {
@@ -127,6 +170,7 @@ export function RepoCard({ repo, result, collapsedWidgets, onToggleWidget, handl
   const height = resize?.rows ?? rows;
   // A resize folds and opens lists as the card shrinks and grows.
   const collapsed = resize?.collapsed ?? collapsedWidgets;
+  const allEmpty = data ? allEmptyText(repo, data) : null;
 
   return (
     <article
@@ -141,17 +185,27 @@ export function RepoCard({ repo, result, collapsedWidgets, onToggleWidget, handl
     >
       <header className="card-header">
         {handle}
+        <StatusBadge result={result} />
         <ExternalLink href={data?.url ?? fallbackUrl(repo)} className="card-title">
           <span className="owner">{repo.owner}/</span>
           {repo.name}
         </ExternalLink>
+        {data?.isPrivate && (
+          <span className="card-lock" role="img" aria-label="Private" title="Private">
+            <Icon name="lock" size={12} />
+          </span>
+        )}
         {repo.provider === 'gitlab' && <span className="badge badge-muted">GitLab</span>}
-        {data?.isPrivate && <span className="badge badge-muted">private</span>}
-        {data?.isArchived && <span className="badge badge-muted">archived</span>}
+        {data?.isArchived && <span className="badge badge-muted">Archived</span>}
         {data?.ci && (
           <span className="card-ci" title={`CI on ${data.defaultBranch ?? 'default branch'}`}>
-            <CiIcon state={data.ci} />
-            <span className="branch">{data.defaultBranch}</span>
+            <span className={`card-status ci-${data.ci}`}>{CI_META[data.ci].word}</span>
+            {data.defaultBranch && (
+              <span className="branch">
+                <Icon name="branch" size={12} />
+                {data.defaultBranch}
+              </span>
+            )}
           </span>
         )}
       </header>
@@ -159,7 +213,9 @@ export function RepoCard({ repo, result, collapsedWidgets, onToggleWidget, handl
       <div className="card-body">
         {!result && <p className="empty">Loading…</p>}
         {result && !result.ok && <RepoErrorText error={result.error} />}
-        {data &&
+        {data && (allEmpty !== null ? (
+          <p className="empty card-empty">{allEmpty}</p>
+        ) : (
           repo.widgets.map((w) => (
             <Widget
               key={w.type}
@@ -170,8 +226,9 @@ export function RepoCard({ repo, result, collapsedWidgets, onToggleWidget, handl
               delta={resize?.delta ?? 0}
               mergeRequests={repo.provider === 'gitlab'}
             />
-          ))}
-        {data && repo.widgets.length === 0 && <p className="empty">No widgets enabled</p>}
+          ))
+        ))}
+        {data && repo.widgets.length === 0 && <p className="empty card-empty">No widgets enabled</p>}
       </div>
       {grip}
     </article>

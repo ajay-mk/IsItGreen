@@ -61,7 +61,7 @@ async function pin(text: string) {
 }
 
 function expandRepo(name: string) {
-  return userEvent.click(screen.getByRole('button', { name: `▸ ${name}` }));
+  return userEvent.click(screen.getByRole('button', { name: name }));
 }
 
 describe('SettingsPanel', () => {
@@ -333,6 +333,15 @@ describe('SettingsPanel', () => {
     expect(screen.getByRole('checkbox', { name: 'Your pull requests' }).closest('fieldset')?.disabled).toBe(true);
   });
 
+  it('shows the sidebar again when it was hidden from the top bar', async () => {
+    const { config } = setup({ layout: { ...defaultConfig().layout, inboxHidden: true } });
+    const toggle = screen.getByRole('checkbox', { name: 'Show sidebar' });
+    expect((toggle as HTMLInputElement).checked).toBe(false);
+    await userEvent.click(toggle);
+    expect(config().inbox.enabled).toBe(true);
+    expect(config().layout.inboxHidden).toBe(false);
+  });
+
   it('sets how your pull requests are grouped', async () => {
     const { config } = setup();
     const select = screen.getByRole('combobox', { name: 'Group by' });
@@ -346,7 +355,7 @@ describe('SettingsPanel', () => {
   it('changes refresh interval and theme', async () => {
     const { config } = setup();
     await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Refresh' }), 'Every 15 min');
-    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Theme' }), 'Dark');
+    await userEvent.click(screen.getByRole('radio', { name: 'Dark' }));
     expect(config()).toMatchObject({ refreshMinutes: 15, theme: 'dark' });
   });
 
@@ -392,7 +401,7 @@ describe('SettingsPanel', () => {
         ['gitlab', 'acme', 'api'],
         ['github', 'octo', 'repo'],
       ]);
-      expect(screen.getByRole('button', { name: /^▸ group\/sub\/project/ }).textContent).toContain('GitLab');
+      expect(screen.getByRole('button', { name: /^group\/sub\/project/ }).textContent).toContain('GitLab');
     });
 
     it('suggests projects from GitLab when it is selected', async () => {

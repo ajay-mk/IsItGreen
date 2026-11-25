@@ -82,6 +82,11 @@ export interface LayoutConfig {
   cardSpans: Record<string, number>;
   /** Repo cards with a height the user set, in grid rows, by `repoId()`. Others fit their content. */
   cardRows: Record<string, number>;
+  /**
+   * Whether the "Needs you" sidebar is hidden from the top bar. Unlike
+   * `inbox.enabled`, the lists are still fetched, so notifications keep working.
+   */
+  inboxHidden: boolean;
 }
 
 /**
@@ -202,7 +207,7 @@ export function defaultConfig(): DashboardConfig {
     version: CONFIG_VERSION,
     repos: [],
     inbox: { enabled: true, reviewRequests: true, myPullRequests: true, assigned: true, limit: 10 },
-    layout: { collapsedInbox: [], groupMyPullRequests: 'none', collapsedWidgets: [], cardSpans: {}, cardRows: {} },
+    layout: { collapsedInbox: [], groupMyPullRequests: 'none', collapsedWidgets: [], cardSpans: {}, cardRows: {}, inboxHidden: false },
     refreshMinutes: 5,
     theme: 'system',
     notifications: true,
@@ -401,6 +406,7 @@ export function parseConfig(raw: unknown): DashboardConfig {
       : [],
     cardSpans: pinnedCardSpans(repos, layoutRaw.cardSpans),
     cardRows: pinnedCardRows(repos, layoutRaw.cardRows),
+    inboxHidden: bool(layoutRaw.inboxHidden, defaults.layout.inboxHidden),
   };
 
   const refresh = (REFRESH_CHOICES as readonly number[]).includes(raw.refreshMinutes as number)

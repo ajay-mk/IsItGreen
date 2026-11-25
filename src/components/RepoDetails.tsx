@@ -416,16 +416,25 @@ export function RepoDetails({ repo, result, loadLists, loadDetails, onClose }: {
 
       <div className="repo-details-split">
         <div className="split-list">
+          <div className="split-tabs" role="tablist" aria-label="Show">
+            {([
+              ['pr', mergeRequests ? 'Merge requests' : 'Pull requests', prTotal],
+              ['issue', 'Issues', issueTotal],
+            ] as const).map(([value, text, count]) => (
+              <button
+                key={value}
+                type="button"
+                role="tab"
+                className="split-tab"
+                aria-selected={tab === value}
+                aria-controls="repo-details-list"
+                onClick={() => setTab(value)}
+              >
+                {text} <span className="count">{count}</span>
+              </button>
+            ))}
+          </div>
           <div className="split-controls">
-            <Segmented
-              label="Show"
-              value={tab}
-              onChange={setTab}
-              options={[
-                { value: 'pr', text: mergeRequests ? 'Merge requests' : 'Pull requests', count: prTotal },
-                { value: 'issue', text: 'Issues', count: issueTotal },
-              ]}
-            />
             {tab === 'pr' ? (
               <Segmented
                 label="Filter"
@@ -455,6 +464,7 @@ export function RepoDetails({ repo, result, loadLists, loadDetails, onClose }: {
           ) : (
             <ul
               ref={list}
+              id="repo-details-list"
               className="split-items"
               role="listbox"
               tabIndex={0}

@@ -88,7 +88,8 @@ describe('RepoDetails', () => {
     await userEvent.click(within(filter).getByRole('button', { name: /Drafts/ }));
     expect(options().map((o) => o.textContent)).toEqual([expect.stringContaining('Draft change')]);
 
-    await userEvent.click(within(screen.getByRole('group', { name: 'Show' })).getByRole('button', { name: /Issues/ }));
+    await userEvent.click(screen.getByRole('tab', { name: /Issues/ }));
+    expect(screen.getByRole('tab', { name: /Issues/ }).getAttribute('aria-selected')).toBe('true');
     expect(options()).toHaveLength(2);
     await userEvent.click(within(screen.getByRole('group', { name: 'Filter by label' })).getByRole('button', { name: 'docs' }));
     expect(options().map((o) => o.textContent)).toEqual([expect.stringContaining('Write docs')]);

@@ -820,10 +820,32 @@ fieldset.plain:disabled > * { opacity: 0.5; }
 
 .repo-details-split { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(280px, 40%) minmax(0, 1fr); }
 .split-list { display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--border); background: var(--bg); }
-.split-controls { display: grid; gap: 8px; padding: 14px 14px 10px; }
-.split-controls > .segmented:first-child { display: grid; grid-template-columns: 1fr 1fr; justify-self: stretch; }
+.split-tabs { display: flex; gap: 20px; padding: 0 16px; border-bottom: 1px solid var(--border); }
+.split-tab {
+  position: relative;
+  padding: 12px 0 10px;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-weight: 550;
+  cursor: pointer;
+}
+.split-tab:hover { color: var(--text); }
+.split-tab[aria-selected='true'] { color: var(--text); }
+.split-tab[aria-selected='true']::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--text);
+}
+.split-controls { padding: 10px 14px 6px; }
 .split-controls .segment { font-size: 12.5px; padding: 3px 10px; }
-.split-controls > .segmented:not(:first-child) { flex-wrap: wrap; background: transparent; border-color: transparent; padding: 0; }
+.split-controls > .segmented { flex-wrap: wrap; background: transparent; border-color: transparent; padding: 0; }
 .split-controls .segment .count { color: var(--muted); }
 .split-note { margin: 0; padding: 4px 16px 8px; font-size: 12px; }
 .split-items { list-style: none; margin: 0; padding: 2px 8px 8px; overflow-y: auto; flex: 1; outline: none; }
@@ -853,6 +875,8 @@ fieldset.plain:disabled > * { opacity: 0.5; }
 .split-detail-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 12.5px; }
 .split-detail-head .card-status { display: flex; align-items: center; gap: 4px; font-weight: 550; }
 .split-kind { margin-left: auto; color: var(--muted); font-size: 12px; }
+/* With no status chips (issues), the kind leads the line instead of leaving it blank. */
+.split-kind:first-child { margin-left: 0; }
 .split-detail-title { font-size: 17px; font-weight: 620; line-height: 1.3; margin: -4px 0 0; }
 .split-detail-body .details-meta { margin: -8px 0 0; font-size: 12.5px; }
 .split-detail-body .details-branch { font-size: 12.5px; }

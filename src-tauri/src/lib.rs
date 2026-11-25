@@ -6,6 +6,7 @@ mod github_queries;
 mod gitlab;
 mod graphql_guard;
 mod http;
+mod images;
 mod token;
 mod window_state;
 
@@ -62,6 +63,7 @@ pub fn run() {
         tokens: Arc::new(token::TokenStore::default()),
         github: github::GitHubClient::new().expect("failed to initialise HTTP client"),
         gitlab: gitlab::GitLabClient::new().expect("failed to initialise HTTP client"),
+        images: images::ImageClient::new().expect("failed to initialise HTTP client"),
         gh_read: tauri::async_runtime::Mutex::new(()),
     };
 
@@ -87,6 +89,7 @@ pub fn run() {
             commands::github_graphql,
             commands::gitlab_graphql,
             commands::open_external,
+            commands::fetch_image,
             window_state::save_window_state,
         ])
         .setup(|app| {

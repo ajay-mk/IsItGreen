@@ -257,7 +257,7 @@ function DetailPane({ item, load }: { item: Item; load: LoadDetails }) {
                 {details.markdown ? (
                   // Until the renderer loads, the plain-text excerpt stands in.
                   <Suspense fallback={<p className="split-body">{details.body}</p>}>
-                    <Markdown source={details.markdown} base={base.url} />
+                    <Markdown source={details.markdown} base={base.url} images={details.images} />
                   </Suspense>
                 ) : (
                   <p className="split-body">{details.body}</p>

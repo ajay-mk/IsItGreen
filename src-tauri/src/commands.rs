@@ -9,6 +9,7 @@ use tauri_plugin_opener::OpenerExt;
 use crate::error::{Error, Result};
 use crate::github::GitHubClient;
 use crate::gitlab::{GitLabClient, Host, GITLAB_COM};
+use crate::images::ImageClient;
 use crate::token::{validate_format, Owner, Provider, Resolved, Slot, TokenStore, TokenSummary};
 use crate::{gh, github_queries, graphql_guard};
 use std::sync::Arc;
@@ -17,6 +18,7 @@ pub struct AppState {
     pub tokens: Arc<TokenStore>,
     pub github: GitHubClient,
     pub gitlab: GitLabClient,
+    pub images: ImageClient,
     /// Held while a token is read from the GitHub CLI, so requests that
     /// arrive together (as they do at startup) run gh once, not each.
     pub gh_read: async_runtime::Mutex<()>,
@@ -241,6 +243,15 @@ pub async fn gitlab_graphql(
         state.tokens.forget_cached(Provider::GitLab, &slot);
     }
     result
+}
+
+/// Fetches an image from a pull request or issue description, from GitHub's
+/// image hosts only, and returns it as a `data:` URL for the webview (whose
+/// content security policy allows no remote images). No token is sent.
+#[tauri::command]
+pub async fn fetch_image(state: State<'_, AppState>, url: String) -> Result<String> {
+    let url = Url::parse(&url).map_err(|_| Error::ForbiddenUrl)?;
+    state.images.fetch(url).await
 }
 
 /// Opens a web page in the system browser. Only GitHub, gitlab.com and the

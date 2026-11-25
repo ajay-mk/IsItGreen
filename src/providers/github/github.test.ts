@@ -448,6 +448,21 @@ describe('mapDetails', () => {
     expect(d.markdown).toBe('');
   });
 
+  it("reads image sources from GitHub's rendered description", () => {
+    const d = mapDetails({
+      __typename: 'Issue',
+      bodyHTML:
+        '<p><a href="x"><img src="https://private-user-images.githubusercontent.com/1/a.png?jwt=a&amp;b=c" alt="s"></a>' +
+        '<img data-canonical-src="https://example.com/c.png?x=1&amp;y=2" src="https://camo.githubusercontent.com/z" style="max-width:100%">' +
+        '<img alt="no source"></p>',
+    })!;
+    expect(d.images).toEqual([
+      { src: 'https://private-user-images.githubusercontent.com/1/a.png?jwt=a&b=c', canonical: null },
+      { src: 'https://camo.githubusercontent.com/z', canonical: 'https://example.com/c.png?x=1&y=2' },
+    ]);
+    expect(mapDetails({ __typename: 'Issue' })!.images).toEqual([]);
+  });
+
   it('caps very long Markdown descriptions', () => {
     const d = mapDetails({ __typename: 'Issue', body: 'y'.repeat(MARKDOWN_CHARS + 50) })!;
     expect(d.markdown.length).toBe(MARKDOWN_CHARS);

@@ -1,9 +1,14 @@
 import type { Element } from 'hast';
 import type { Blockquote, Paragraph, Root, RootContent } from 'mdast';
+import { useEffect, useState } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import rehypeHighlight from 'rehype-highlight';
+import rehypeRaw from 'rehype-raw';
+import rehypeSanitize, { defaultSchema, type Options as SanitizeSchema } from 'rehype-sanitize';
 import remarkGfm from 'remark-gfm';
-import { isSafeExternalUrl } from '../lib/url';
+import { fetchImage } from '../lib/transport';
+import { isImageUrl, isSafeExternalUrl } from '../lib/url';
+import type { ImageSource } from '../providers/types';
 import { ExternalLink } from './ExternalLink';
 
 const ALERTS = {
@@ -70,6 +75,85 @@ function languageOf(pre: Element | undefined): string | null {
 /** Languages that describe a diagram, which GitHub draws instead of showing. */
 const DIAGRAMS = new Set(['mermaid', 'geojson', 'topojson', 'stl']);
 
+/**
+ * GitHub's own rules for HTML in Markdown (what github.com lets through), plus
+ * the classes and role our alerts add. Scripts, styles, event handlers,
+ * comments and non-http(s) URLs are removed.
+ */
+const SCHEMA: SanitizeSchema = {
+  ...defaultSchema,
+  attributes: {
+    ...defaultSchema.attributes,
+    div: [...(defaultSchema.attributes?.div ?? []), ['className', 'md-alert', /^md-alert-[a-z]+$/], ['role', 'note']],
+    p: [...(defaultSchema.attributes?.p ?? []), ['className', 'md-alert-title']],
+  },
+};
+
+/** UUIDs name GitHub attachments, both in the link and in its signed form. */
+const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+
+/**
+ * Where to load an image from. GitHub's rendered description has the
+ * fetchable form of each image: a signed link for attachments in private
+ * repositories, or its proxy for other sites' images. Failing that, the
+ * address itself, if it is on GitHub's image hosts.
+ */
+function imageSource(url: string, images: readonly ImageSource[]): string | null {
+  const proxied = images.find((i) => i.canonical === url);
+  if (proxied && isImageUrl(proxied.src)) return proxied.src;
+  const id = UUID.exec(url)?.[0].toLowerCase();
+  const signed = id ? images.find((i) => i.src.toLowerCase().includes(id)) : undefined;
+  if (signed && isImageUrl(signed.src)) return signed.src;
+  return isImageUrl(url) ? url : null;
+}
+
+/** Images already loaded, by source; few and kept for the session. */
+const loaded = new Map<string, Promise<string>>();
+const MAX_LOADED = 40;
+
+function load(src: string): Promise<string> {
+  let hit = loaded.get(src);
+  if (!hit) {
+    hit = fetchImage(src);
+    hit.catch(() => loaded.delete(src));
+    loaded.set(src, hit);
+    // Drop the oldest, so a long session does not keep every image.
+    if (loaded.size > MAX_LOADED) loaded.delete(loaded.keys().next().value!);
+  }
+  return hit;
+}
+
+/** An image, loaded through the backend; a link to it if that fails. */
+function RemoteImage({ src, original, alt, width }: {
+  src: string;
+  original: string;
+  alt: string;
+  width: number | undefined;
+}) {
+  const [state, setState] = useState<{ src: string; data: string | null; failed: boolean }>({ src, data: null, failed: false });
+  useEffect(() => {
+    let live = true;
+    load(src).then(
+      (data) => live && setState({ src, data, failed: false }),
+      () => live && setState({ src, data: null, failed: true }),
+    );
+    return () => {
+      live = false;
+    };
+  }, [src]);
+  const current = state.src === src ? state : { data: null, failed: false };
+  const label = alt ? `Image: ${alt}` : 'Image';
+  if (current.failed) {
+    return isSafeExternalUrl(original) ? (
+      <ExternalLink href={original} className="md-image">{label}</ExternalLink>
+    ) : (
+      <span className="md-image">{label}</span>
+    );
+  }
+  if (!current.data) return <span className="md-image md-image-loading" role="img" aria-label={label} />;
+  return <img className="md-img" src={current.data} alt={alt} width={width} />;
+}
+
 /** `href` resolved against the page it appears on, so relative links work. */
 function resolve(href: string | undefined, base: string): string | null {
   if (!href) return null;
@@ -85,16 +169,19 @@ function resolve(href: string | undefined, base: string): string | null {
  * rendered as React elements: tables, task lists, strikethrough, autolinks,
  * GitHub's alerts, and code blocks highlighted by their language.
  *
- * The text is untrusted, so raw HTML in it is dropped rather than rendered,
- * and links only open where the rest of the app may (GitHub and the connected
- * GitLab); others show as text, with the address on hover. Images are not
- * loaded (the app's content security policy blocks remote ones) and become a
- * link to the image instead.
+ * The text is untrusted. HTML in it goes through GitHub's own sanitising
+ * rules, so `<details>` and `<img>` work while scripts, styles and event
+ * handlers do not. Links only open where the rest of the app may (GitHub and
+ * the connected GitLab); others show as text, with the address on hover.
+ * Images are fetched by the backend from GitHub's image hosts only (the
+ * content security policy blocks remote images); others become a link.
  */
-export function Markdown({ source, base }: {
+export function Markdown({ source, base, images = [] }: {
   source: string;
   /** The page the text belongs to, for relative links. */
   base: string;
+  /** The provider's own sources for the description's images. */
+  images?: readonly ImageSource[];
 }) {
   const components: Components = {
     a: ({ href, children }) => {
@@ -102,9 +189,14 @@ export function Markdown({ source, base }: {
       if (url && isSafeExternalUrl(url)) return <ExternalLink href={url}>{children}</ExternalLink>;
       return <span className="md-link-off" title={href}>{children}</span>;
     },
-    img: ({ src, alt }) => {
+    img: ({ src, alt, width }) => {
       const url = typeof src === 'string' ? resolve(src, base) : null;
       const text = alt ? `Image: ${alt}` : 'Image';
+      const fetchable = url ? imageSource(url, images) : null;
+      if (url && fetchable) {
+        const w = Number(width);
+        return <RemoteImage src={fetchable} original={url} alt={alt ?? ''} width={Number.isFinite(w) && w > 0 ? w : undefined} />;
+      }
       return url && isSafeExternalUrl(url) ? (
         <ExternalLink href={url} className="md-image">{text}</ExternalLink>
       ) : (
@@ -139,9 +231,12 @@ export function Markdown({ source, base }: {
     <div className="markdown">
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkAlerts]}
-        // Only fenced blocks that name their language: guessing would colour prose and logs.
-        rehypePlugins={[[rehypeHighlight, { detect: false }]]}
-        skipHtml
+        rehypePlugins={[
+          rehypeRaw,
+          [rehypeSanitize, SCHEMA],
+          // Only fenced blocks that name their language: guessing would colour prose and logs.
+          [rehypeHighlight, { detect: false }],
+        ]}
         components={components}
       >
         {source}

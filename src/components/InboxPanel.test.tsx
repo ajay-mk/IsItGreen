@@ -110,6 +110,7 @@ describe('item details', () => {
     labels: [{ name: 'feature', color: '00ff00' }],
     assignees: [],
     markdown: '',
+    images: [],
     incomplete: false,
     pr: {
       baseRef: 'main',

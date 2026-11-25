@@ -1,3 +1,5 @@
+import type { ImageSource } from './types';
+
 /**
  * Helpers for reading untrusted API responses: each one returns a safe
  * default instead of trusting the shape of the data.
@@ -28,6 +30,30 @@ export const MARKDOWN_CHARS = 20_000;
 export function capMarkdown(v: unknown): string {
   const text = (str(v) ?? '').replace(/\r\n?/g, '\n').trim();
   return text.length > MARKDOWN_CHARS ? `${text.slice(0, MARKDOWN_CHARS - 1).trimEnd()}…` : text;
+}
+
+const IMG_TAG = /<img\b[^>]*>/gi;
+const attr = (tag: string, name: string): string | null => {
+  const match = new RegExp(`\\s${name}="([^"]*)"`, 'i').exec(tag);
+  return match ? decodeEntities(match[1]!) : null;
+};
+function decodeEntities(s: string): string {
+  return s.replace(/&(amp|quot|#39|lt|gt);/g, (_, e: string) => ({ amp: '&', quot: '"', '#39': "'", lt: '<', gt: '>' })[e]!);
+}
+
+/** Longest rendered description searched for images. */
+const MAX_HTML_CHARS = 200_000;
+
+/**
+ * The images in a provider's rendered description, in order. Only their
+ * addresses are read; the HTML itself is never shown.
+ */
+export function imageSources(v: unknown): ImageSource[] {
+  const html = (str(v) ?? '').slice(0, MAX_HTML_CHARS);
+  return [...html.matchAll(IMG_TAG)].flatMap(([tag]) => {
+    const src = attr(tag, 'src');
+    return src ? [{ src, canonical: attr(tag, 'data-canonical-src') }] : [];
+  });
 }
 
 /** Collapses whitespace and cuts a description to `DETAILS_BODY_CHARS`. */

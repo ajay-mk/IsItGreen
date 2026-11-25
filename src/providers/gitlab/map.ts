@@ -372,6 +372,8 @@ export function mapDetails(project: unknown): ItemDetails | null {
     incomplete: false,
     body: trimBody(n.description),
     markdown: capMarkdown(n.description),
+    // GitLab's uploads are not fetched; its images stay links.
+    images: [],
     comments: num(n.userNotesCount),
     labels: mapLabels(n.labels),
     assignees: arr(obj(n.assignees)?.nodes).flatMap((a) => {

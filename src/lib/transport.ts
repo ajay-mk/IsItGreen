@@ -155,6 +155,14 @@ export function saveWindowState(): Promise<void> {
   return call<void>('save_window_state', {});
 }
 
+/**
+ * An image from a pull request or issue description, as a `data:` URL. The
+ * backend fetches it from GitHub's image hosts only, without a token.
+ */
+export function fetchImage(url: string): Promise<string> {
+  return call<string>('fetch_image', { url });
+}
+
 /** Opens a GitHub or connected-GitLab page in the system browser. */
 export function openExternalUrl(url: string): Promise<void> {
   return call<void>('open_external', { url });

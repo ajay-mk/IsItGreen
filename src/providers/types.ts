@@ -65,12 +65,23 @@ export interface CheckItem {
 export type ReviewerState = 'approved' | 'changes_requested' | 'commented' | 'requested';
 
 /** Extra facts about a pull request or issue, loaded when its details open. */
+export interface ImageSource {
+  src: string;
+  /** The address the description gave, when the provider replaced it. */
+  canonical: string | null;
+}
 export interface ItemDetails {
   createdAt: string;
   /** Plain-text description, trimmed by the provider. */
   body: string;
   /** The description as written (GitHub-flavoured Markdown), capped by the provider. */
   markdown: string;
+  /**
+   * The images of the description as the provider serves them, in order:
+   * GitHub swaps attachment links for signed ones and proxies other sites'
+   * images, keeping the original as `canonical`. Empty when not provided.
+   */
+  images: ImageSource[];
   comments: number;
   labels: Label[];
   /** Pull requests only. */

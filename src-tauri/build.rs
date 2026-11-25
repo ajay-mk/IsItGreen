@@ -12,6 +12,7 @@ fn main() {
             "github_graphql",
             "gitlab_graphql",
             "open_external",
+            "fetch_image",
             "save_window_state",
         ]),
     ))

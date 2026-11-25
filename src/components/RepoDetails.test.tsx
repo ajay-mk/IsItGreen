@@ -9,6 +9,7 @@ const details = (overrides: Partial<ItemDetails> = {}): ItemDetails => ({
   createdAt: new Date().toISOString(),
   body: 'What this changes.',
   markdown: 'What this changes.',
+  images: [],
   comments: 2,
   labels: [],
   pr: null,

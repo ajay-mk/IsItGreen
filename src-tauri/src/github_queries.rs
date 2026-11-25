@@ -120,7 +120,7 @@ const OWNER_REPOS: &str = concat!(
 
 macro_rules! details_common {
     () => {
-        "createdAt body bodyText comments { totalCount } labels(first: 10) { nodes { name color } }"
+        "createdAt body bodyHTML bodyText comments { totalCount } labels(first: 10) { nodes { name color } }"
     };
 }
 

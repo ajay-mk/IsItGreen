@@ -1,15 +1,26 @@
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { render, screen, waitFor } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ImageSource } from '../providers/types';
 import { SCRIPT_URL } from '../test/fixtures';
 import { Markdown } from './Markdown';
+
+const fetchImage = vi.hoisted(() => vi.fn<(url: string) => Promise<string>>());
+vi.mock('../lib/transport', async (real) => ({ ...(await real<object>()), fetchImage }));
+
+beforeEach(() => {
+  fetchImage.mockReset();
+  fetchImage.mockImplementation((url) => Promise.resolve(`data:image/png;base64,${btoa(url)}`));
+});
 
 const BASE = 'https://github.com/octo/repo/pull/7';
 
 const flat = (el: Element) => (el.textContent ?? '').replace(/\s+/g, ' ').trim();
 
-function show(source: string) {
-  return render(<Markdown source={source} base={BASE} />).container;
+function show(source: string, images: ImageSource[] = []) {
+  return render(<Markdown source={source} base={BASE} images={images} />).container;
 }
+
+const dataFor = (url: string) => `data:image/png;base64,${btoa(url)}`;
 
 describe('Markdown', () => {
   it('renders GitHub-flavoured Markdown', () => {
@@ -62,11 +73,29 @@ describe('Markdown', () => {
     expect(unknown!.textContent).toBe('let n = 42;\n');
   });
 
-  it('drops raw HTML instead of rendering it', () => {
-    const md = show('Hi <img src=x onerror="window.__pwned=1"> there\n\n<!-- template note -->\n\n<script>alert(1)</script>');
-    expect(md.querySelector('img, script')).toBeNull();
+  it('sanitises HTML the way GitHub does', () => {
+    const md = show(
+      [
+        'Hi <b onclick="window.__pwned=1">bold</b> <span style="color:red">styled</span>',
+        '',
+        '<details><summary>More</summary>',
+        '',
+        'Hidden text',
+        '',
+        '</details>',
+        '',
+        '<!-- template note -->',
+        '',
+        '<script>alert(1)</script><iframe src="https://example.com"></iframe>',
+        '',
+        '<a href="javascript:alert(1)">js</a>',
+      ].join('\n'),
+    );
+    expect(md.querySelector('b')?.textContent).toBe('bold');
+    expect(md.querySelector('[onclick], [style], script, iframe')).toBeNull();
+    expect(md.querySelector('details summary')?.textContent).toBe('More');
     expect(md.textContent).not.toContain('template note');
-    expect(md.textContent).not.toContain('onerror');
+    expect(screen.queryByRole('link', { name: 'js' })).toBeNull();
   });
 
   it('links only to pages the app may open, resolving relative links', () => {
@@ -77,10 +106,34 @@ describe('Markdown', () => {
     expect(screen.queryByRole('link', { name: 'bad' })).toBeNull();
   });
 
-  it('shows images as links instead of loading them', () => {
-    const md = show('![screenshot](https://github.com/user-attachments/assets/1) ![tracker](https://example.com/p.gif)');
-    expect(md.querySelector('img')).toBeNull();
-    expect(screen.getByRole('link', { name: 'Image: screenshot' }).getAttribute('href')).toBe('https://github.com/user-attachments/assets/1');
+  it('loads images from GitHub through the backend, including HTML ones', async () => {
+    const attachment = 'https://github.com/user-attachments/assets/0a1b2c3d-1111-2222-3333-444455556666';
+    show(`![screenshot](${attachment})\n\n<img width="320" alt="raw" src="https://raw.githubusercontent.com/o/r/main/x.png">`);
+    const shot = (await screen.findByRole('img', { name: 'screenshot' })) as HTMLImageElement;
+    expect(shot.getAttribute('src')).toBe(dataFor(attachment));
+    const raw = (await screen.findByRole('img', { name: 'raw' })) as HTMLImageElement;
+    expect(raw.getAttribute('width')).toBe('320');
+    expect(fetchImage).toHaveBeenCalledWith('https://raw.githubusercontent.com/o/r/main/x.png');
+  });
+
+  it("uses GitHub's signed and proxied sources when it gives them", async () => {
+    const uuid = '0a1b2c3d-1111-2222-3333-444455556666';
+    const signed = `https://private-user-images.githubusercontent.com/9/1-${uuid}.png?jwt=t`;
+    const proxied = 'https://camo.githubusercontent.com/abc/def';
+    show(`![private](https://github.com/user-attachments/assets/${uuid}) ![chart](https://example.com/chart.png)`, [
+      { src: signed, canonical: null },
+      { src: proxied, canonical: 'https://example.com/chart.png' },
+    ]);
+    expect((await screen.findByRole('img', { name: 'private' })).getAttribute('src')).toBe(dataFor(signed));
+    expect((await screen.findByRole('img', { name: 'chart' })).getAttribute('src')).toBe(dataFor(proxied));
+  });
+
+  it('never fetches images from other sites, and links to an image that fails', async () => {
+    fetchImage.mockImplementation(() => Promise.reject(new Error('404')));
+    show('![tracker](https://example.com/p.gif) ![gone](https://github.com/user-attachments/assets/1)');
     expect(screen.getByText('Image: tracker').tagName).toBe('SPAN');
+    await waitFor(() => expect(screen.getByRole('link', { name: 'Image: gone' }).getAttribute('href')).toBe('https://github.com/user-attachments/assets/1'));
+    expect(fetchImage).toHaveBeenCalledTimes(1);
+    expect(fetchImage).not.toHaveBeenCalledWith('https://example.com/p.gif');
   });
 });

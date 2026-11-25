@@ -43,6 +43,35 @@ export function isSafeExternalUrl(url: string): boolean {
   }
 }
 
+/** Hosts GitHub serves description images from (see `src-tauri/src/images.rs`). */
+const IMAGE_HOSTS = new Set([
+  'private-user-images.githubusercontent.com',
+  'user-images.githubusercontent.com',
+  'camo.githubusercontent.com',
+  'raw.githubusercontent.com',
+  'objects.githubusercontent.com',
+  'avatars.githubusercontent.com',
+  'github-production-user-asset-6210df.s3.amazonaws.com',
+]);
+
+/**
+ * Whether the backend may fetch an image from `url`: one of GitHub's image
+ * hosts, or an attachment link on github.com. The backend checks this again.
+ */
+export function isImageUrl(url: string): boolean {
+  try {
+    const u = new URL(url);
+    if (u.protocol !== 'https:' || u.port !== '' || u.username !== '' || u.password !== '') return false;
+    if (u.host === 'github.com') {
+      const parts = u.pathname.split('/').filter(Boolean);
+      return (parts[0] === 'user-attachments' && parts[1] === 'assets' && parts.length === 3) || (parts.length >= 3 && parts[2] === 'assets');
+    }
+    return IMAGE_HOSTS.has(u.host);
+  } catch {
+    return false;
+  }
+}
+
 /** GitLab writes merge requests as `!12`; everything else is `#12`. */
 export function refSigil(url: string, isPullRequest: boolean): string {
   return isPullRequest && providerOfUrl(url) === 'gitlab' ? '!' : '#';

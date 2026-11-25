@@ -269,9 +269,6 @@ function DetailPane({ item, load }: { item: Item; load: LoadDetails }) {
         )}
       </div>
       <div className="split-actions">
-        <ExternalLink href={base.url} className="btn btn-primary">
-          Open {sigil}{base.number} on {provider.label} <Icon name="external" size={12} />
-        </ExternalLink>
         {isPr && (
           <>
             <ExternalLink href={`${base.url}/${provider.id === 'gitlab' ? 'diffs' : 'files'}`} className="btn">Files</ExternalLink>
@@ -280,6 +277,9 @@ function DetailPane({ item, load }: { item: Item; load: LoadDetails }) {
             </ExternalLink>
           </>
         )}
+        <ExternalLink href={base.url} className="btn btn-primary">
+          Open {sigil}{base.number} on {provider.label} <Icon name="external" size={12} />
+        </ExternalLink>
       </div>
     </div>
   );

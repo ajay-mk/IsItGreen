@@ -990,3 +990,22 @@ fieldset.plain:disabled > * { opacity: 0.5; }
 .markdown .hljs-deletion { background: var(--hl-del-bg); }
 .markdown .hljs-emphasis { font-style: italic; }
 .markdown .hljs-strong { font-weight: 600; }
+
+/* ---------- Details pane: lighter, fewer boxes and lines ---------- */
+.split-detail .details-branch code { padding: 0; background: none; color: var(--text); }
+.split-detail .label { padding: 0; background: none; height: auto; gap: 5px; }
+.split-detail .details-labels { gap: 4px 14px; }
+.split-actions { border-top: 0; padding-top: 10px; justify-content: flex-end; }
+.markdown pre { background: var(--hover); }
+.markdown code { background: var(--hover); }
+.markdown .md-alert { padding: 2px 0 2px 12px; border-radius: 0; background: none; }
+.markdown .md-alert-title { margin-bottom: 2px; }
+.markdown .md-diagram { border: 0; border-radius: 0; }
+.markdown .md-diagram figcaption { padding: 0 0 6px; }
+.markdown .md-diagram pre { background: var(--hover); }
+.markdown table { font-size: 12.5px; }
+.markdown th, .markdown td { padding: 6px 16px 6px 0; border: 0; border-bottom: 1px solid var(--border-soft); }
+.markdown th { background: none; color: var(--muted); font-weight: 600; border-bottom-color: var(--border); }
+.markdown tr:last-child td { border-bottom: 0; }
+.markdown hr { border-top-color: var(--border-soft); }
+.markdown .md-code-labelled pre { padding-top: 26px; }

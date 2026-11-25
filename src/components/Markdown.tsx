@@ -125,7 +125,7 @@ export function Markdown({ source, base }: {
         );
       }
       return (
-        <div className="md-code">
+        <div className={lang ? 'md-code md-code-labelled' : 'md-code'}>
           {lang && <span className="md-code-lang">{lang}</span>}
           <pre>{children}</pre>
         </div>

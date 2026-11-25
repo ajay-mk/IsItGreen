@@ -1013,3 +1013,8 @@ fieldset.plain:disabled > * { opacity: 0.5; }
 .markdown .md-image-loading { display: block; width: 100%; max-width: 360px; height: 120px; border-radius: var(--radius-sm); background: var(--hover); }
 .markdown details { margin: 0 0 10px; }
 .markdown summary { cursor: pointer; color: var(--muted); }
+/* Checks and reviews sit side by side: one row height for both, so their rows line up across. */
+.split-columns .split-section { gap: 0; }
+.split-columns .split-section > h4 { margin-bottom: 4px; }
+.split-columns .details-line, .split-columns .split-checks li, .split-columns .details-reviewers li { min-height: 24px; margin: 0; }
+.split-columns .split-checks, .split-columns .details-reviewers { gap: 0; }

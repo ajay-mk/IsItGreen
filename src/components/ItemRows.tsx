@@ -82,8 +82,9 @@ export function PullRequestRow({ pr, showRepo = false, stacked = false, action =
   );
 }
 
-function Labels({ labels }: { labels: IssueItem['labels'] }) {
-  return labels.slice(0, 2).map((label) => (
+/** Label chips: a colour dot and the name. Shows the first `max`. */
+export function LabelChips({ labels, max = 2 }: { labels: IssueItem['labels']; max?: number }) {
+  return labels.slice(0, max).map((label) => (
     <span key={label.name} className="badge label" title={label.name}>
       {/* Colour is validated as 6-digit hex in the mapper; set via the
           CSSOM, which the CSP allows (unlike inline style attributes). */}
@@ -121,12 +122,12 @@ export function IssueRow({ issue, showRepo = false, stacked = false, details }: 
         <>
           {title(true)}
           {time}
-          <span className="row-sub"><span aria-hidden="true">{ref}</span><Labels labels={issue.labels} /></span>
+          <span className="row-sub"><span aria-hidden="true">{ref}</span><LabelChips labels={issue.labels} /></span>
         </>
       ) : (
         <>
           {title(false)}
-          <Labels labels={issue.labels} />
+          <LabelChips labels={issue.labels} />
           {time}
         </>
       )}

@@ -1,7 +1,7 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { WidgetType } from '../config/schema';
 import type { RepoResult } from '../providers/types';
 import { issue, pinned, pr, SCRIPT_URL, snapshot } from '../test/fixtures';
@@ -66,6 +66,16 @@ describe('RepoCard', () => {
     render(<RepoCard {...noLayout} repo={repo} result={ok(snapshot({ pullRequests: { total: 2, items: [] } }))} />);
     expect(within(card()).getByRole('heading', { name: /Pull requests/ }).textContent).toContain('2');
     expect(within(card()).getByText('Drafts are hidden; nothing else to show')).toBeTruthy();
+  });
+
+  it('opens the pop-up from its expand button, and has none without a handler', async () => {
+    const onExpand = vi.fn();
+    const { rerender } = render(<RepoCard {...noLayout} repo={pinned()} result={ok()} onExpand={onExpand} />);
+    const button = screen.getByRole('button', { name: 'Pull requests and issues of octo/repo' });
+    await userEvent.click(button);
+    expect(onExpand).toHaveBeenCalledWith(button);
+    rerender(<RepoCard {...noLayout} repo={pinned()} result={ok()} />);
+    expect(screen.queryByRole('button', { name: /Pull requests and issues/ })).toBeNull();
   });
 
   it('renders API text as text, never as markup', () => {

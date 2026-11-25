@@ -5,15 +5,16 @@ import { providerOfUrl, refSigil } from '../lib/url';
 import { providers } from '../providers';
 import type { CheckItem, IssueItem, ItemDetails, PullRequestItem, ReviewerState } from '../providers/types';
 import { ExternalLink } from './ExternalLink';
+import { LabelChips } from './ItemRows';
 import { CiIcon } from './StatusIcons';
 
 export type Item = { kind: 'pr'; pr: PullRequestItem } | { kind: 'issue'; issue: IssueItem };
 
-function itemOf(item: Item) {
+export function itemOf(item: Item) {
   return item.kind === 'pr' ? item.pr : item.issue;
 }
 
-const REVIEWER_TEXT: Record<ReviewerState, { icon: string; text: string; cls: string }> = {
+export const REVIEWER_TEXT: Record<ReviewerState, { icon: string; text: string; cls: string }> = {
   approved: { icon: '✓', text: 'approved', cls: 'ci-success' },
   changes_requested: { icon: '✕', text: 'requested changes', cls: 'ci-failure' },
   commented: { icon: '●', text: 'commented', cls: 'ci-none' },
@@ -116,11 +117,7 @@ function DetailsContent({ item, details, error }: {
           {details.body && <p className="details-body">{details.body}</p>}
           {details.labels.length > 0 && (
             <div className="details-labels">
-              {details.labels.map((l) => (
-                <span key={l.name} className="label" style={l.color ? { borderColor: `#${l.color}` } : undefined}>
-                  {l.name}
-                </span>
-              ))}
+              <LabelChips labels={details.labels} max={details.labels.length} />
             </div>
           )}
         </>
@@ -142,7 +139,7 @@ function DetailsContent({ item, details, error }: {
 
 export type LoadDetails = (url: string) => Promise<ItemDetails>;
 
-function useDetails(url: string, load: LoadDetails) {
+export function useDetails(url: string, load: LoadDetails) {
   const [state, setState] = useState<{ details: ItemDetails | null; error: string | null }>({ details: null, error: null });
   useEffect(() => {
     let live = true;

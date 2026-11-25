@@ -109,6 +109,8 @@ describe('item details', () => {
     comments: 2,
     labels: [{ name: 'feature', color: '00ff00' }],
     assignees: [],
+    markdown: '',
+    images: [],
     incomplete: false,
     pr: {
       baseRef: 'main',

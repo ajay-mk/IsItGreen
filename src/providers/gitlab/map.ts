@@ -8,7 +8,7 @@
 import { parseGitLabPath, type PinnedRepo } from '../../config/schema';
 import { prNeedsAttention } from '../../lib/health';
 import { connectedGitLabHost, providerOfUrl } from '../../lib/url';
-import { arr, num, obj, str, trimBody, type Raw } from '../raw';
+import { arr, capMarkdown, num, obj, str, trimBody, type Raw } from '../raw';
 import type {
   CheckItem,
   CiState,
@@ -371,6 +371,9 @@ export function mapDetails(project: unknown): ItemDetails | null {
     createdAt: str(n.createdAt) ?? '',
     incomplete: false,
     body: trimBody(n.description),
+    markdown: capMarkdown(n.description),
+    // GitLab's uploads are not fetched; its images stay links.
+    images: [],
     comments: num(n.userNotesCount),
     labels: mapLabels(n.labels),
     assignees: arr(obj(n.assignees)?.nodes).flatMap((a) => {

@@ -8,6 +8,21 @@ export const CI_META: Record<CiState, { icon: IconName; label: string; word: str
   none: { icon: 'dash', label: 'No CI', word: 'No CI' },
 };
 
+/**
+ * A repository's CI state as a round badge. The icon's shape (✓, ✕, clock)
+ * carries the state, so no word is needed next to it; the label is read out
+ * and shown on hover.
+ */
+export function CiBadge({ state, branch }: { state: CiState; branch?: string | null | undefined }) {
+  const meta = CI_META[state];
+  const label = branch ? `${meta.label} on ${branch}` : meta.label;
+  return (
+    <span className={`status-badge status-${state}`} role="img" aria-label={label} title={label}>
+      <Icon name={meta.icon} size={12} />
+    </span>
+  );
+}
+
 export function CiIcon({ state }: { state: CiState }) {
   const meta = CI_META[state];
   return (

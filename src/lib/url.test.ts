@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { isSafeExternalUrl, providerOfUrl, setGitLabHost } from './url';
+import { isSafeExternalUrl, providerOfUrl, setGitLabHost, isImageUrl } from './url';
 
 afterEach(() => setGitLabHost(null));
 
@@ -43,6 +43,37 @@ describe('isSafeExternalUrl', () => {
       'https://gitlab.example.com.evil.com:8443/g/p',
     ]) {
       expect(isSafeExternalUrl(url), url).toBe(false);
+    }
+  });
+});
+
+describe('isImageUrl', () => {
+  it('accepts the places GitHub serves description images from', () => {
+    for (const ok of [
+      'https://github.com/user-attachments/assets/0a1b2c3d-1111-2222-3333-444455556666',
+      'https://github.com/acme/api/assets/123/abc',
+      'https://github.com/ajay-mk/IsItGreen/blob/screenshots/pr-13/a.png?raw=true',
+      'https://github.com/ajay-mk/IsItGreen/raw/screenshots/pr-13/a.png',
+      'https://private-user-images.githubusercontent.com/1/x.png?jwt=t',
+      'https://raw.githubusercontent.com/o/r/main/x.png',
+      'https://camo.githubusercontent.com/abc',
+    ]) {
+      expect(isImageUrl(ok), ok).toBe(true);
+    }
+  });
+
+  it('refuses everything else', () => {
+    for (const bad of [
+      'https://github.com/ajay-mk/IsItGreen/blob/main/x.png',
+      'https://github.com/ajay-mk/IsItGreen/blob/main/x.png?raw=false',
+      'https://github.com/ajay-mk/IsItGreen',
+      'https://github.com/user-attachments/assets/',
+      'https://example.com/x.png',
+      'http://raw.githubusercontent.com/o/r/main/x.png',
+      'https://raw.githubusercontent.com.evil.com/x.png',
+      'https://x@raw.githubusercontent.com/o/r/x.png',
+    ]) {
+      expect(isImageUrl(bad), bad).toBe(false);
     }
   });
 });

@@ -5,7 +5,7 @@ import { openExternalUrl } from '../lib/transport';
 import { shortAgo } from '../lib/time';
 import { providerOfUrl, refSigil } from '../lib/url';
 import { providers } from '../providers';
-import type { CheckItem, IssueItem, ItemDetails, RepoResult, RepoSnapshot } from '../providers/types';
+import type { CheckItem, ItemDetails, RepoResult, RepoSnapshot } from '../providers/types';
 import { ExternalLink } from './ExternalLink';
 import { Icon } from './Icons';
 import { itemOf, REVIEWER_TEXT, useDetails, type Item, type LoadDetails } from './ItemDetails';
@@ -15,8 +15,6 @@ import { CI_META, CiIcon, ReviewBadge } from './StatusIcons';
 type Tab = 'pr' | 'issue';
 type PrFilter = 'all' | 'attention' | 'drafts';
 
-/** Labels offered as issue filters: the most used ones, at most this many. */
-const LABEL_FILTERS = 4;
 /** How long the selection must rest before its details are fetched. */
 const SETTLE_MS = 200;
 
@@ -76,15 +74,6 @@ function useSettled<T>(value: T, ms: number): T {
     return () => clearTimeout(timer);
   }, [value, ms]);
   return settled;
-}
-
-function topLabels(issues: IssueItem[]): string[] {
-  const counts = new Map<string, number>();
-  for (const issue of issues) for (const l of issue.labels) counts.set(l.name, (counts.get(l.name) ?? 0) + 1);
-  return [...counts.entries()]
-    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-    .slice(0, LABEL_FILTERS)
-    .map(([name]) => name);
 }
 
 function Segmented<T extends string>({ label, value, options, onChange }: {
@@ -311,17 +300,14 @@ export function RepoDetails({ repo, result, loadLists, loadDetails, onClose }: {
   const issues = useMemo(() => data?.issues?.items ?? [], [data]);
   const [tab, setTab] = useState<Tab>(prs.length > 0 || issues.length === 0 ? 'pr' : 'issue');
   const [prFilter, setPrFilter] = useState<PrFilter>('all');
-  const [label, setLabel] = useState<string | null>(null);
-  const labels = useMemo(() => topLabels(issues), [issues]);
 
   const items: Item[] = useMemo(() => {
     if (tab === 'pr') {
       const shown = prFilter === 'attention' ? prs.filter(prNeedsAttention) : prFilter === 'drafts' ? prs.filter((p) => p.isDraft) : prs;
       return shown.map((pr) => ({ kind: 'pr', pr }));
     }
-    const shown = label ? issues.filter((i) => i.labels.some((l) => l.name === label)) : issues;
-    return shown.map((issue) => ({ kind: 'issue', issue }));
-  }, [tab, prFilter, label, prs, issues]);
+    return issues.map((issue) => ({ kind: 'issue', issue }));
+  }, [tab, prFilter, prs, issues]);
 
   const [selectedUrl, setSelectedUrl] = useState<string | null>(null);
   // Keep a selection that is still listed; otherwise select the first item.
@@ -361,7 +347,7 @@ export function RepoDetails({ repo, result, loadLists, loadDetails, onClose }: {
   const emptyText =
     tab === 'pr'
       ? prFilter === 'all' ? `No open ${noun}` : prFilter === 'drafts' ? 'No drafts' : `No ${noun} need attention`
-      : label ? `No open issues labeled ${label}` : 'No open issues';
+      : 'No open issues';
   const shownCount = tab === 'pr' ? prs.length : issues.length;
   const total = tab === 'pr' ? prTotal : issueTotal;
 
@@ -434,8 +420,8 @@ export function RepoDetails({ repo, result, loadLists, loadDetails, onClose }: {
               </button>
             ))}
           </div>
-          <div className="split-controls">
-            {tab === 'pr' ? (
+          {tab === 'pr' && (
+            <div className="split-controls">
               <Segmented
                 label="Filter"
                 value={prFilter}
@@ -446,17 +432,8 @@ export function RepoDetails({ repo, result, loadLists, loadDetails, onClose }: {
                   { value: 'drafts', text: 'Drafts', count: prs.filter((p) => p.isDraft).length },
                 ]}
               />
-            ) : (
-              labels.length > 0 && (
-                <Segmented<string>
-                  label="Filter by label"
-                  value={label ?? ''}
-                  onChange={(v) => setLabel(v || null)}
-                  options={[{ value: '', text: 'All', count: issues.length }, ...labels.map((l) => ({ value: l, text: l }))]}
-                />
-              )
-            )}
-          </div>
+            </div>
+          )}
           {lists.error && <p className="error-text split-note">{lists.error}</p>}
           {!lists.full && lists.loading && <p className="muted split-note">Loading the full lists…</p>}
           {items.length === 0 ? (

@@ -79,7 +79,7 @@ describe('RepoDetails', () => {
     expect(loadDetails.mock.calls.filter(([url]) => url.endsWith('/pull/3'))).toHaveLength(1);
   });
 
-  it('filters pull requests and issues', async () => {
+  it('filters pull requests, and lists issues unfiltered', async () => {
     setup();
     await waitFor(() => expect(options()).toHaveLength(3));
     const filter = screen.getByRole('group', { name: 'Filter' });
@@ -91,8 +91,8 @@ describe('RepoDetails', () => {
     await userEvent.click(screen.getByRole('tab', { name: /Issues/ }));
     expect(screen.getByRole('tab', { name: /Issues/ }).getAttribute('aria-selected')).toBe('true');
     expect(options()).toHaveLength(2);
-    await userEvent.click(within(screen.getByRole('group', { name: 'Filter by label' })).getByRole('button', { name: 'docs' }));
-    expect(options().map((o) => o.textContent)).toEqual([expect.stringContaining('Write docs')]);
+    // Issues are listed without filters.
+    expect(screen.queryByRole('group', { name: 'Filter' })).toBeNull();
   });
 
   it('says when a filter leaves nothing', async () => {

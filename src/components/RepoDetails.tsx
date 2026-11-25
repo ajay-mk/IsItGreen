@@ -10,6 +10,7 @@ import { ExternalLink } from './ExternalLink';
 import { Icon } from './Icons';
 import { itemOf, REVIEWER_TEXT, useDetails, type Item, type LoadDetails } from './ItemDetails';
 import { LabelChips } from './ItemRows';
+import { Markdown } from './Markdown';
 import { CI_META, CiBadge, CiIcon, ReviewBadge } from './StatusIcons';
 
 type Tab = 'pr' | 'issue';
@@ -247,10 +248,14 @@ function DetailPane({ item, load }: { item: Item; load: LoadDetails }) {
                 </div>
               </section>
             )}
-            {details.body && (
+            {(details.markdown || details.body) && (
               <section className="split-section">
                 <h4 className="details-label">Description</h4>
-                <p className="split-body">{details.body}</p>
+                {details.markdown ? (
+                  <Markdown source={details.markdown} base={base.url} />
+                ) : (
+                  <p className="split-body">{details.body}</p>
+                )}
               </section>
             )}
             {details.incomplete && <p className="muted">Some details could not be loaded.</p>}
@@ -381,8 +386,9 @@ export function RepoDetails({ repo, result, loadLists, loadDetails, onClose }: {
         )}
         <span className="repo-details-actions">
           {data?.url && (
-            <ExternalLink href={data.url} className="btn">
-              Open on {providers[repo.provider].label} <Icon name="external" size={12} />
+            <ExternalLink href={data.url} className="icon-btn" title={`Open on ${providers[repo.provider].label}`}>
+              <Icon name="external" size={16} />
+              <span className="sr-only">Open on {providers[repo.provider].label}</span>
             </ExternalLink>
           )}
           <button type="button" className="icon-btn" aria-label="Close" onClick={() => dialog.current?.close()}>

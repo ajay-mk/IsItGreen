@@ -296,6 +296,7 @@ describe('mappers', () => {
     });
     expect(details).toMatchObject({
       body: 'Adds a cache. More.',
+      markdown: 'Adds   a cache.\n\nMore.',
       comments: 3,
       assignees: ['jane.doe'],
       labels: [{ name: 'perf', color: '00ff00' }],

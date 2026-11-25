@@ -69,6 +69,8 @@ export interface ItemDetails {
   createdAt: string;
   /** Plain-text description, trimmed by the provider. */
   body: string;
+  /** The description as written (GitHub-flavoured Markdown), capped by the provider. */
+  markdown: string;
   comments: number;
   labels: Label[];
   /** Pull requests only. */

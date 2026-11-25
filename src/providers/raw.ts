@@ -21,6 +21,15 @@ export function arr(v: unknown): unknown[] {
 /** Longest description kept for the details view. */
 export const DETAILS_BODY_CHARS = 400;
 
+/** Longest Markdown description kept for the repository pop-up. */
+export const MARKDOWN_CHARS = 20_000;
+
+/** A Markdown description as written, cut to `MARKDOWN_CHARS`. */
+export function capMarkdown(v: unknown): string {
+  const text = (str(v) ?? '').replace(/\r\n?/g, '\n').trim();
+  return text.length > MARKDOWN_CHARS ? `${text.slice(0, MARKDOWN_CHARS - 1).trimEnd()}…` : text;
+}
+
 /** Collapses whitespace and cuts a description to `DETAILS_BODY_CHARS`. */
 export function trimBody(v: unknown): string {
   const text = (str(v) ?? '').replace(/\s+/g, ' ').trim();

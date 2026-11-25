@@ -11,7 +11,7 @@ import type { GraphQLError } from '../../lib/transport';
 import { isSafeExternalUrl } from '../../lib/url';
 import { EVENTS_FETCHED } from './queries';
 import { PERMISSION_LABELS } from './tokenTemplate';
-import { arr, num, obj, str, trimBody, type Raw } from '../raw';
+import { arr, capMarkdown, num, obj, str, trimBody, type Raw } from '../raw';
 import type {
   CheckItem,
   CiState,
@@ -415,6 +415,7 @@ export function mapDetails(v: unknown): ItemDetails | null {
     createdAt: str(n.createdAt) ?? '',
     incomplete: false,
     body: trimBody(n.bodyText),
+    markdown: capMarkdown(n.body),
     comments: num(obj(n.comments)?.totalCount),
     labels: mapLabels(n.labels),
     assignees: arr(obj(n.assignees)?.nodes).flatMap((a) => {

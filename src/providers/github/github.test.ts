@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { PinnedRepo } from '../../config/schema';
 import { githubGraphql } from '../../lib/transport';
 import { github } from './index';
-import { DETAILS_BODY_CHARS } from '../raw';
+import { DETAILS_BODY_CHARS, MARKDOWN_CHARS } from '../raw';
 import { describeRepoError, mapDetails, mapInbox, mapIssue, mapPullRequest, mapRepository } from './map';
 import { buildReposRequest, DETAILS_QUERY, EVENTS_FETCHED, OPEN_PRS_FETCHED, OWNER_REPOS_QUERY } from './queries';
 
@@ -392,6 +392,7 @@ describe('mapDetails', () => {
     __typename: 'PullRequest',
     createdAt: '2026-10-01T00:00:00Z',
     bodyText: 'Line one\n\n  line two',
+    body: '## Line one\r\n\r\n  - line two',
     comments: { totalCount: 3 },
     labels: { nodes: [{ name: 'ui', color: 'zzz' }] },
     baseRefName: 'main',
@@ -417,6 +418,8 @@ describe('mapDetails', () => {
   it('maps checks, reviewers and the diff of a pull request', () => {
     const d = mapDetails(rawPr)!;
     expect(d.body).toBe('Line one line two');
+    // The Markdown keeps its structure; only line endings are normalised.
+    expect(d.markdown).toBe('## Line one\n\n  - line two');
     expect(d.comments).toBe(3);
     expect(d.labels).toEqual([{ name: 'ui', color: null }]);
     expect(d.pr).toMatchObject({ baseRef: 'main', headRef: 'feat/x', additions: 12, deletions: 3, changedFiles: 2 });
@@ -442,6 +445,13 @@ describe('mapDetails', () => {
     expect(d.assignees).toEqual(['me']);
     expect(d.body.length).toBe(DETAILS_BODY_CHARS);
     expect(d.body.endsWith('…')).toBe(true);
+    expect(d.markdown).toBe('');
+  });
+
+  it('caps very long Markdown descriptions', () => {
+    const d = mapDetails({ __typename: 'Issue', body: 'y'.repeat(MARKDOWN_CHARS + 50) })!;
+    expect(d.markdown.length).toBe(MARKDOWN_CHARS);
+    expect(d.markdown.endsWith('…')).toBe(true);
   });
 
   it('rejects anything that is not a pull request or issue', () => {

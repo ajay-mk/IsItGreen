@@ -8,6 +8,7 @@ import { RepoDetails, withFullLists, type LoadLists } from './RepoDetails';
 const details = (overrides: Partial<ItemDetails> = {}): ItemDetails => ({
   createdAt: new Date().toISOString(),
   body: 'What this changes.',
+  markdown: 'What this changes.',
   comments: 2,
   labels: [],
   pr: null,
@@ -31,7 +32,7 @@ const full = ok(snapshot({ pullRequests: { total: 3, items: prs }, issues: { tot
 
 function setup({ card = ok(), lists = Promise.resolve<RepoResult | undefined>(full) } = {}) {
   const loadLists = vi.fn<LoadLists>(() => lists);
-  const loadDetails = vi.fn((url: string) => Promise.resolve(details({ body: `Body of ${url}` })));
+  const loadDetails = vi.fn((url: string) => Promise.resolve(details({ markdown: `Body of ${url.split('/').slice(-2).join(' ')}` })));
   const onClose = vi.fn();
   render(<RepoDetails repo={pinned()} result={card} loadLists={loadLists} loadDetails={loadDetails} onClose={onClose} />);
   return { loadLists, loadDetails, onClose };
@@ -46,7 +47,7 @@ describe('RepoDetails', () => {
     expect(loadLists).toHaveBeenCalledOnce();
     await waitFor(() => expect(options()).toHaveLength(3));
     expect(selected().textContent).toContain('Failing change');
-    expect(await screen.findByText('Body of https://github.com/octo/repo/pull/3')).toBeTruthy();
+    expect(await screen.findByText('Body of pull 3')).toBeTruthy();
     expect(loadDetails).toHaveBeenCalledWith('https://github.com/octo/repo/pull/3');
   });
 
@@ -72,9 +73,9 @@ describe('RepoDetails', () => {
     expect(selected().textContent).toContain('Ready change');
     await userEvent.keyboard('{End}');
     expect(selected().textContent).toContain('Draft change');
-    expect(await screen.findByText('Body of https://github.com/octo/repo/pull/1')).toBeTruthy();
+    expect(await screen.findByText('Body of pull 1')).toBeTruthy();
     await userEvent.keyboard('{Home}');
-    expect(await screen.findByText('Body of https://github.com/octo/repo/pull/3')).toBeTruthy();
+    expect(await screen.findByText('Body of pull 3')).toBeTruthy();
     // Back on the first item: served from the cache, not fetched again.
     expect(loadDetails.mock.calls.filter(([url]) => url.endsWith('/pull/3'))).toHaveLength(1);
   });

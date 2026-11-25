@@ -64,7 +64,12 @@ export function isImageUrl(url: string): boolean {
     if (u.protocol !== 'https:' || u.port !== '' || u.username !== '' || u.password !== '') return false;
     if (u.host === 'github.com') {
       const parts = u.pathname.split('/').filter(Boolean);
-      return (parts[0] === 'user-attachments' && parts[1] === 'assets' && parts.length === 3) || (parts.length >= 3 && parts[2] === 'assets');
+      if (parts[0] === 'user-attachments') return parts[1] === 'assets' && parts.length === 3;
+      // `/owner/repo/assets/…`, or a file that redirects to raw.githubusercontent.com:
+      // `/owner/repo/raw/ref/path` or `/owner/repo/blob/ref/path?raw=true`.
+      if (parts.length >= 3 && parts[2] === 'assets') return true;
+      if (parts.length >= 5 && parts[2] === 'raw') return true;
+      return parts.length >= 5 && parts[2] === 'blob' && u.searchParams.get('raw') === 'true';
     }
     return IMAGE_HOSTS.has(u.host);
   } catch {

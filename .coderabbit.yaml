@@ -53,7 +53,9 @@ reviews:
         The backend is the only place tokens are used. Flag anything that
         returns a token to the webview, sends one anywhere other than
         api.github.com or the GitLab instance it was saved for, allows plain
-        HTTP or redirects, weakens the mutation/subscription check in
+        HTTP or redirects on any request that carries a token, widens the
+        image hosts in images.rs or lets fetch_image send a token, cookie or
+        unchecked redirect, weakens the mutation/subscription check in
         graphql_guard.rs, or lets the frontend name keychain entries.
         SECURITY.md describes the model.
     - path: "src-tauri/capabilities/**"

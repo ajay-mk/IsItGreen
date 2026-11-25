@@ -64,9 +64,14 @@ pub fn is_image_url(url: &Url) -> bool {
                 .path_segments()
                 .map(Iterator::collect)
                 .unwrap_or_default();
+            let raw = url.query_pairs().any(|(k, v)| k == "raw" && v == "true");
             matches!(segments.as_slice(), ["user-attachments", "assets", id] if !id.is_empty())
                 // The older form, under the repository.
                 || matches!(segments.as_slice(), [owner, repo, "assets", ..] if !owner.is_empty() && !repo.is_empty())
+                // A file in a repository, which redirects to raw.githubusercontent.com:
+                // `/owner/repo/raw/ref/path` or `/owner/repo/blob/ref/path?raw=true`.
+                || matches!(segments.as_slice(), [owner, repo, "raw", _, file, ..] if !owner.is_empty() && !repo.is_empty() && !file.is_empty())
+                || (raw && matches!(segments.as_slice(), [owner, repo, "blob", _, file, ..] if !owner.is_empty() && !repo.is_empty() && !file.is_empty()))
         }
         Some(host) => IMAGE_HOSTS.contains(&host),
         None => false,
@@ -154,6 +159,8 @@ mod tests {
         for ok in [
             "https://github.com/user-attachments/assets/0a1b2c3d-1111-2222-3333-444455556666",
             "https://github.com/acme/api/assets/123/abc",
+            "https://github.com/ajay-mk/IsItGreen/blob/screenshots/pr-13/a.png?raw=true",
+            "https://github.com/ajay-mk/IsItGreen/raw/screenshots/pr-13/a.png",
             "https://private-user-images.githubusercontent.com/1/2-uuid.png?jwt=x",
             "https://camo.githubusercontent.com/abc/def",
             "https://raw.githubusercontent.com/a/b/main/x.png",
@@ -166,6 +173,9 @@ mod tests {
             "https://github.com/acme/api",
             "https://github.com/user-attachments/assets/",
             "https://github.com/login",
+            // A file page without ?raw=true is HTML, not the image.
+            "https://github.com/ajay-mk/IsItGreen/blob/main/x.png",
+            "https://github.com/ajay-mk/IsItGreen/blob/main/x.png?raw=false",
             "https://gist.githubusercontent.com/a/b/raw/x",
             "https://example.com/pixel.gif",
             "https://raw.githubusercontent.com.evil.com/x.png",
@@ -206,6 +216,15 @@ mod tests {
             url("https://private-user-images.githubusercontent.com/1/x.png?jwt=t"),
         );
         assert!(redirect_target(&from, Some("https://example.com/x.png")).is_err());
+        let blob = url("https://github.com/o/r/blob/main/x.png?raw=true");
+        assert_eq!(
+            redirect_target(
+                &blob,
+                Some("https://raw.githubusercontent.com/o/r/main/x.png")
+            )
+            .unwrap(),
+            url("https://raw.githubusercontent.com/o/r/main/x.png"),
+        );
         // A relative redirect to another github.com page that is not an image.
         assert!(redirect_target(&from, Some("/login")).is_err());
         assert!(redirect_target(&from, None).is_err());
@@ -221,6 +240,13 @@ mod tests {
         )))
         .unwrap();
         assert!(data.starts_with("data:image/png;base64,iVBORw0KGgo"));
+        // A file link in the form this repository's pull requests use: two
+        // redirects (to /raw/…, then raw.githubusercontent.com), both checked.
+        let linked = tauri::async_runtime::block_on(client.fetch(url(
+            "https://github.com/ajay-mk/IsItGreen/blob/screenshots/pr-56/dashboard-light.png?raw=true",
+        )))
+        .unwrap();
+        assert!(linked.starts_with("data:image/png;base64,iVBORw0KGgo"));
         // Not an image host: refused before any request.
         let refused =
             tauri::async_runtime::block_on(client.fetch(url("https://example.com/x.png")));

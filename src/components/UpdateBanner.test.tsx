@@ -4,17 +4,8 @@ import { describe, expect, it, vi } from 'vitest';
 import type { Updates, UpdateState } from '../hooks/useUpdates';
 import { UpdateBanner } from './UpdateBanner';
 
-function updates(state: UpdateState, dismissed = false, announced = false): Updates {
-  return {
-    state,
-    dismissed,
-    announced,
-    checkNow: vi.fn(),
-    checkAnnounced: vi.fn(),
-    clearAnnouncement: vi.fn(),
-    install: vi.fn(),
-    dismiss: vi.fn(),
-  };
+function updates(state: UpdateState, dismissed = false): Updates {
+  return { state, dismissed, checkNow: vi.fn(), checkFromMenu: vi.fn(), install: vi.fn(), dismiss: vi.fn() };
 }
 
 describe('UpdateBanner', () => {
@@ -35,24 +26,6 @@ describe('UpdateBanner', () => {
     expect(container.textContent).toBe('');
     // A failed check is shown in Settings, where it was started.
     rerender(<UpdateBanner updates={updates({ kind: 'error', message: 'Could not check for updates: offline' })} />);
-    expect(container.textContent).toBe('');
-  });
-
-  it('reports a check started from the app menu', async () => {
-    const { container, rerender } = render(<UpdateBanner updates={updates({ kind: 'checking' }, false, true)} />);
-    expect(screen.getByRole('status').textContent).toBe('Checking for updates…');
-    const current = updates({ kind: 'current' }, false, true);
-    rerender(<UpdateBanner updates={current} />);
-    expect(screen.getByRole('status').textContent).toContain('IsItGreen is up to date.');
-    await userEvent.click(screen.getByRole('button', { name: 'OK' }));
-    expect(current.clearAnnouncement).toHaveBeenCalled();
-    const failed = updates({ kind: 'error', message: 'Could not check for updates: offline' }, false, true);
-    rerender(<UpdateBanner updates={failed} />);
-    expect(screen.getByRole('alert').textContent).toContain('Could not check for updates: offline');
-    await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
-    expect(failed.checkAnnounced).toHaveBeenCalled();
-    // A check from Settings is reported there instead.
-    rerender(<UpdateBanner updates={updates({ kind: 'checking' })} />);
     expect(container.textContent).toBe('');
   });
 

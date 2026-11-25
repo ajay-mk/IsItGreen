@@ -6,6 +6,7 @@
 
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { message } from '@tauri-apps/plugin-dialog';
 import type { GitHubOperation } from '../providers/github/queries';
 import type { ProviderId } from '../providers/types';
 
@@ -188,4 +189,13 @@ export function onCheckForUpdates(handler: () => void): () => void {
     stopped = true;
     unlisten?.();
   };
+}
+
+/** A system alert with an OK button: the app's own icon, `title` in bold and `detail` below it. */
+export async function showAlert(title: string, detail: string, kind: 'info' | 'error'): Promise<void> {
+  try {
+    await message(detail, { title, kind });
+  } catch {
+    // Outside the app (a browser preview) there is no system alert.
+  }
 }

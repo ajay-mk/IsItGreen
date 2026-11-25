@@ -18,6 +18,10 @@ vi.mock('@tauri-apps/api/event', () => ({
   listen: vi.fn(() => Promise.resolve(() => undefined)),
 }));
 
+vi.mock('@tauri-apps/plugin-dialog', () => ({
+  message: vi.fn(() => Promise.resolve('Ok')),
+}));
+
 vi.mock('@tauri-apps/plugin-notification', () => ({
   isPermissionGranted: vi.fn(() => Promise.resolve(false)),
   requestPermission: vi.fn(() => Promise.resolve('denied')),

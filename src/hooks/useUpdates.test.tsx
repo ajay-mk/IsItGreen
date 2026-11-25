@@ -3,6 +3,7 @@ import { relaunch } from '@tauri-apps/plugin-process';
 import { check, type DownloadEvent, type Update } from '@tauri-apps/plugin-updater';
 import { describe, expect, it, vi } from 'vitest';
 import { listen } from '@tauri-apps/api/event';
+import { message } from '@tauri-apps/plugin-dialog';
 import { CHECK_FOR_UPDATES_EVENT, saveWindowState } from '../lib/transport';
 import { CHECK_INTERVAL_MS, CHECK_TIMEOUT_MS, DOWNLOAD_TIMEOUT_MS, useUpdates } from './useUpdates';
 
@@ -42,7 +43,7 @@ describe('useUpdates', () => {
     expect(result.current.state).toEqual({ kind: 'current' });
   });
 
-  it('checks when the app menu asks, and announces the outcome', async () => {
+  it('checks when the app menu asks, and shows the outcome in an alert', async () => {
     let fire: () => void = () => undefined;
     const stop = vi.fn();
     vi.mocked(listen).mockImplementation((event, handler) => {
@@ -51,29 +52,40 @@ describe('useUpdates', () => {
     });
     const { result, unmount } = renderHook(() => useUpdates(false));
     await act(async () => {});
-    expect(result.current.announced).toBe(false);
     act(() => fire());
-    expect(result.current.announced).toBe(true);
     await waitFor(() => expect(result.current.state).toEqual({ kind: 'current' }));
-    act(() => result.current.clearAnnouncement());
-    expect(result.current.announced).toBe(false);
-    // A check from Settings shows its outcome there, not in the banner.
+    await waitFor(() =>
+      expect(message).toHaveBeenCalledWith('You have the newest version.', { title: 'IsItGreen is up to date.', kind: 'info' }),
+    );
+    vi.mocked(check).mockRejectedValueOnce(new Error('offline'));
     act(() => fire());
-    act(() => result.current.checkNow());
-    expect(result.current.announced).toBe(false);
+    await waitFor(() =>
+      expect(message).toHaveBeenLastCalledWith('Could not check for updates: offline', {
+        title: 'Could not check for updates',
+        kind: 'error',
+      }),
+    );
     unmount();
     expect(stop).toHaveBeenCalled();
   });
 
-  it('shows a dismissed update again when the menu asks', async () => {
+  it('leaves the outcome of a check from Settings to Settings', async () => {
+    const { result } = renderHook(() => useUpdates(false));
+    act(() => result.current.checkNow());
+    await waitFor(() => expect(result.current.state).toEqual({ kind: 'current' }));
+    expect(message).not.toHaveBeenCalled();
+  });
+
+  it('offers an update found from the menu in the banner, even one dismissed before', async () => {
     vi.mocked(check).mockResolvedValue(fakeUpdate('1.2.0'));
     const { result } = renderHook(() => useUpdates(true));
     await waitFor(() => expect(result.current.state).toEqual({ kind: 'available', version: '1.2.0' }));
     act(() => result.current.dismiss());
     expect(result.current.dismissed).toBe(true);
-    act(() => result.current.checkAnnounced());
-    await waitFor(() => expect(result.current.state).toEqual({ kind: 'available', version: '1.2.0' }));
-    expect(result.current.dismissed).toBe(false);
+    act(() => result.current.checkFromMenu());
+    await waitFor(() => expect(result.current.dismissed).toBe(false));
+    expect(result.current.state).toEqual({ kind: 'available', version: '1.2.0' });
+    expect(message).not.toHaveBeenCalled();
   });
 
   it('does not check on its own when automatic checks are off', async () => {

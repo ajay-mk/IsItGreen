@@ -23,7 +23,9 @@ export interface Updates {
   /**
    * A check from the app menu, which has no place in the window to report
    * its outcome: "up to date" and failures are shown in a system alert, and
-   * an update in the banner, even one dismissed before.
+   * an update in the banner, even one dismissed before. A failed check that
+   * already knows of an update offers that update instead of an error, as a
+   * check from Settings does: it is still newer and can still be installed.
    */
   checkFromMenu: () => void;
   install: () => void;

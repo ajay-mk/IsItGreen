@@ -88,6 +88,18 @@ describe('useUpdates', () => {
     expect(message).not.toHaveBeenCalled();
   });
 
+  it('offers an update already found when a menu check fails, without an error alert', async () => {
+    vi.mocked(check).mockResolvedValueOnce(fakeUpdate('1.2.0'));
+    const { result } = renderHook(() => useUpdates(true));
+    await waitFor(() => expect(result.current.state).toEqual({ kind: 'available', version: '1.2.0' }));
+    act(() => result.current.dismiss());
+    vi.mocked(check).mockRejectedValueOnce(new Error('offline'));
+    act(() => result.current.checkFromMenu());
+    await waitFor(() => expect(result.current.state).toEqual({ kind: 'available', version: '1.2.0' }));
+    expect(result.current.dismissed).toBe(false);
+    expect(message).not.toHaveBeenCalled();
+  });
+
   it('does not check on its own when automatic checks are off', async () => {
     const { result } = renderHook(() => useUpdates(false));
     await act(async () => {});

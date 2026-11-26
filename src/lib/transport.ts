@@ -8,6 +8,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { message } from '@tauri-apps/plugin-dialog';
 import type { GitHubOperation } from '../providers/github/queries';
+import type { GitLabOperation } from '../providers/gitlab/queries';
 import type { ProviderId } from '../providers/types';
 
 export type AppErrorKind =
@@ -145,11 +146,15 @@ export function githubGraphql<T>(
 }
 
 /**
- * Runs a read-only GraphQL query against the connected GitLab instance. The
- * backend picks the host the stored token belongs to.
+ * Runs one of IsItGreen's read-only GitLab queries, by name (the documents live
+ * in the backend), against the connected GitLab instance. The backend picks
+ * the host the stored token belongs to.
  */
-export function gitlabGraphql<T>(query: string, variables: Record<string, unknown>): Promise<GraphQLResponse<T>> {
-  return call<GraphQLResponse<T>>('gitlab_graphql', { query, variables });
+export function gitlabGraphql<T>(
+  operation: GitLabOperation,
+  variables: Record<string, unknown>,
+): Promise<GraphQLResponse<T>> {
+  return call<GraphQLResponse<T>>('gitlab_graphql', { operation, variables });
 }
 
 /** Saves the window's size and position, which normally happens on exit. */

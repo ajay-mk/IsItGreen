@@ -5,7 +5,7 @@ import { setGitLabHost } from '../../lib/url';
 import { normalizeGitLabHost } from './host';
 import { gitlab } from './index';
 import { mapDetails, mapInbox, mapIssue, mapMergeRequest, mapPipelineStatus, mapProject, parseItemUrl, pickBranchPipeline } from './map';
-import { buildProjectsQuery, OPEN_MRS_FETCHED, PROJECTS_PER_REQUEST } from './queries';
+import { buildProjectsRequest } from './queries';
 import { gitlabTokenUrl } from './tokenTemplate';
 
 vi.mock('../../lib/transport', async (importOriginal) => ({
@@ -88,30 +88,21 @@ describe('gitlabTokenUrl', () => {
   });
 });
 
-describe('buildProjectsQuery', () => {
-  it('passes all user input as variables, never in the query text', () => {
-    const evil: PinnedRepo = {
-      ...project,
-      owner: 'x") { id } mutation {',
-      widgets: [{ type: 'issues', limit: 1, label: '"}' }],
-    };
-    const { query, variables } = buildProjectsQuery([evil]);
-    expect(query).not.toContain('mutation');
-    expect(query).not.toContain('"}');
-    expect(variables).toMatchObject({ path0: `${evil.owner}/api`, il0: ['"}'] });
+describe('buildProjectsRequest', () => {
+  // The query text itself is built and tested in the backend.
+  it('describes each project card for the backend', () => {
+    expect(buildProjectsRequest([project])).toEqual({
+      projects: [{ path: 'acme/platform/api', ci: true, mergeRequests: 50, issues: { limit: 3, label: 'bug' } }],
+    });
   });
 
-  it('only requests sections for enabled widgets', () => {
-    const { query, variables } = buildProjectsQuery([{ ...project, widgets: [{ type: 'ci' }] }]);
-    expect(query).toContain('pipelines(first: 10) { nodes { status ref source } }');
-    expect(query).not.toContain('mergeRequests(');
-    expect(query).not.toContain('issues(');
-    expect(Object.keys(variables)).toEqual(['path0']);
-    expect(buildProjectsQuery([{ ...project, widgets: [] }]).query).not.toContain('pipelines');
-  });
-
-  it('fetches more merge requests than the widget shows', () => {
-    expect(buildProjectsQuery([project]).variables.mr0).toBe(OPEN_MRS_FETCHED);
+  it('only asks for sections of enabled widgets', () => {
+    expect(buildProjectsRequest([{ ...project, widgets: [{ type: 'ci' }] }]).projects).toEqual([
+      { path: 'acme/platform/api', ci: true, mergeRequests: null, issues: null },
+    ]);
+    expect(
+      buildProjectsRequest([{ ...project, widgets: [{ type: 'issues', limit: 1, label: null }] }]).projects,
+    ).toEqual([{ path: 'acme/platform/api', ci: false, mergeRequests: null, issues: { limit: 1, label: null } }]);
   });
 });
 
@@ -346,16 +337,18 @@ describe('gitlab provider', () => {
     Array.from({ length: n }, (_, i): PinnedRepo => ({ ...project, name: `p${i}`, widgets: [{ type: 'ci' }] }));
 
   it('fetches projects in small batches and reports missing ones', async () => {
-    graphql.mockImplementation((_query, variables) => {
+    graphql.mockImplementation((operation, variables) => {
+      expect(operation).toBe('IsItGreenProjects');
       const data: Record<string, unknown> = { viewer: { username: 'jane.doe' } };
-      for (const [key, path] of Object.entries(variables)) {
-        const alias = key.replace('path', 'p');
-        data[alias] = path === 'acme/platform/p1' ? null : { fullPath: path, repository: { rootRef: 'main' } };
-      }
+      (variables as { projects: { path: string }[] }).projects.forEach(({ path }, i) => {
+        data[`p${i}`] = path === 'acme/platform/p1' ? null : { fullPath: path, repository: { rootRef: 'main' } };
+      });
       return Promise.resolve({ data });
     });
     const { repos, rateLimit } = await gitlab.fetchRepos(pins(3), []);
-    expect(graphql).toHaveBeenCalledTimes(Math.ceil(3 / PROJECTS_PER_REQUEST));
+    // The backend refuses more than two projects per request.
+    const sent = graphql.mock.calls.map(([, variables]) => (variables as { projects: { path: string }[] }).projects.map((p) => p.path));
+    expect(sent).toEqual([['acme/platform/p0', 'acme/platform/p1'], ['acme/platform/p2']]);
     expect(rateLimit).toBeNull();
     expect(repos.get('gitlab:acme/platform/p0')).toMatchObject({ ok: true, data: { fullName: 'acme/platform/p0' } });
     expect(repos.get('gitlab:acme/platform/p1')).toMatchObject({ ok: false, error: { kind: 'not_found' } });
@@ -384,7 +377,7 @@ describe('gitlab provider', () => {
         data: { project: { repository: { tree: { lastCommit: { pipelines: { nodes: [{ status: 'FAILED', ref: 'main', source: 'push' }] } } } } } },
       });
     const { repos } = await gitlab.fetchRepos(pins(1), []);
-    expect(graphql.mock.calls[1]![1]).toEqual({ path: 'acme/platform/p0', ref: 'main', n: 10 });
+    expect(graphql.mock.calls[1]).toEqual(['IsItGreenBranchPipeline', { path: 'acme/platform/p0', ref: 'main', n: 10 }]);
     expect(repos.get('gitlab:acme/platform/p0')).toMatchObject({ ok: true, data: { ci: 'failure' } });
   });
 
@@ -428,11 +421,10 @@ describe('gitlab provider', () => {
       [],
     );
     expect(inbox.viewer).toBe('jane.doe');
-    // Reviews the viewer already gave are not asked of them again.
-    expect(graphql.mock.calls[0]![0]).toContain('reviewStates: [UNREVIEWED, REVIEW_STARTED, UNAPPROVED]');
-    expect(graphql.mock.calls[1]![1]).toEqual({ me: 'jane.doe', n: 5 });
-    // Reviews the viewer already gave are not asked of them again.
-    expect(graphql.mock.calls[0]![0]).toContain('reviewStates: [UNREVIEWED, REVIEW_STARTED, UNAPPROVED]');
+    expect(graphql.mock.calls).toEqual([
+      ['IsItGreenInbox', { n: 5, withReview: true, withMine: true, withAssigned: true }],
+      ['IsItGreenAssignedIssues', { me: 'jane.doe', n: 5 }],
+    ]);
   });
 
   it('treats an anonymous answer as a rejected token', async () => {
@@ -456,6 +448,7 @@ describe('gitlab provider', () => {
       },
     });
     expect(await gitlab.listRepos([])).toEqual({ repos: ['acme/platform/api'], complete: true });
+    expect(graphql.mock.calls).toEqual([['IsItGreenProjectList', { n: 100 }]]);
   });
 
   it('reports a rejected token instead of an empty project list', async () => {
@@ -466,7 +459,10 @@ describe('gitlab provider', () => {
   it('loads details by project path and number', async () => {
     graphql.mockResolvedValue({ data: { project: { issue: { createdAt: 'x' } } } });
     await gitlab.fetchDetails(web('acme/platform/api/-/issues/4'), []);
-    expect(graphql.mock.calls[0]![1]).toMatchObject({ path: 'acme/platform/api', iid: '4', mr: false });
+    expect(graphql.mock.calls[0]).toEqual(['IsItGreenDetails', { path: 'acme/platform/api', iid: '4', n: 50, mr: false }]);
+    graphql.mockResolvedValue({ data: { project: { mergeRequest: { createdAt: 'x' } } } });
+    await gitlab.fetchDetails(web('acme/platform/api/-/merge_requests/12'), []);
+    expect(graphql.mock.calls[1]).toEqual(['IsItGreenDetails', { path: 'acme/platform/api', iid: '12', n: 50, mr: true }]);
     await expect(gitlab.fetchDetails('https://evil.example/a/b/-/issues/1', [])).rejects.toThrow();
   });
 });

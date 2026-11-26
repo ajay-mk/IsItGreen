@@ -11,7 +11,7 @@ use crate::github::GitHubClient;
 use crate::gitlab::{GitLabClient, Host, GITLAB_COM};
 use crate::images::ImageClient;
 use crate::token::{validate_format, Owner, Provider, Resolved, Slot, TokenStore, TokenSummary};
-use crate::{gh, github_queries, graphql_guard};
+use crate::{gh, github_queries, gitlab_queries, graphql_guard};
 use std::sync::Arc;
 
 pub struct AppState {
@@ -221,18 +221,21 @@ pub async fn token_link_gh(state: State<'_, AppState>, owner: Option<String>) ->
     Ok(login)
 }
 
-/// Executes a read-only GraphQL query against the GitLab instance the stored
-/// token belongs to. The frontend cannot choose the host.
+/// Runs one of IsItGreen's own read-only GitLab queries (`gitlab_queries.rs`),
+/// named by `operation`, against the GitLab instance the stored token belongs
+/// to. The frontend never sends query text and cannot choose the host.
 #[tauri::command]
 pub async fn gitlab_graphql(
     state: State<'_, AppState>,
-    query: String,
+    operation: String,
     variables: Value,
 ) -> Result<Value> {
-    graphql_guard::ensure_read_only(&query)?;
-    if !variables.is_object() || variables.to_string().len() > graphql_guard::MAX_QUERY_BYTES {
+    if variables.to_string().len() > graphql_guard::MAX_QUERY_BYTES {
         return Err(Error::RequestTooLarge);
     }
+    let (query, variables) = gitlab_queries::resolve(&operation, variables)?;
+    // Defence in depth: the documents are ours, but check them anyway.
+    graphql_guard::ensure_read_only(&query)?;
     let (slot, token, host) =
         blocking(&state.tokens, |t| t.resolve_with_host(Provider::GitLab)).await?;
     let result = state

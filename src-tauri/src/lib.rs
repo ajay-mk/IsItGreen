@@ -4,6 +4,7 @@ mod gh;
 mod github;
 mod github_queries;
 mod gitlab;
+mod gitlab_queries;
 mod graphql_guard;
 mod http;
 mod images;

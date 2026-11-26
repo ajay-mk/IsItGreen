@@ -83,8 +83,9 @@ describe('useUpdates', () => {
     act(() => result.current.dismiss());
     expect(result.current.dismissed).toBe(true);
     act(() => result.current.checkFromMenu());
-    await waitFor(() => expect(result.current.dismissed).toBe(false));
-    expect(result.current.state).toEqual({ kind: 'available', version: '1.2.0' });
+    expect(result.current.state).toEqual({ kind: 'checking' });
+    await waitFor(() => expect(result.current.state).toEqual({ kind: 'available', version: '1.2.0' }));
+    expect(result.current.dismissed).toBe(false);
     expect(message).not.toHaveBeenCalled();
   });
 

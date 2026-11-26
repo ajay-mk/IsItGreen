@@ -1,9 +1,27 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ItemDetails, RepoResult } from '../providers/types';
 import { issue, pinned, pr, snapshot } from '../test/fixtures';
+// Loaded up front so the component's lazy import of it resolves at once:
+// loaded on first use instead, it can take longer than `findBy*` waits.
+import './Markdown';
 import { RepoDetails, withFullLists, type LoadLists } from './RepoDetails';
+
+/** Matches SETTLE_MS in RepoDetails: how long a selection rests before its details load. */
+const SETTLE_MS = 200;
+
+/**
+ * Fake timers for tests that wait out the settle delay, so they advance the
+ * clock themselves instead of spending real time on it. `shouldAdvanceTime`
+ * keeps `waitFor` and user-event working, since they wait on timers too.
+ */
+function fakeClock() {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  return userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+}
+
+const settle = () => act(() => vi.advanceTimersByTimeAsync(SETTLE_MS));
 
 const details = (overrides: Partial<ItemDetails> = {}): ItemDetails => ({
   createdAt: new Date().toISOString(),
@@ -43,13 +61,21 @@ const options = () => screen.getAllByRole('option');
 const selected = () => screen.getByRole('option', { selected: true });
 
 describe('RepoDetails', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('loads the full lists and selects the first pull request', async () => {
-    const { loadLists, loadDetails } = setup();
+    fakeClock();
+    const lists = Promise.resolve<RepoResult | undefined>(full);
+    const { loadLists, loadDetails } = setup({ lists });
     expect(loadLists).toHaveBeenCalledOnce();
-    await waitFor(() => expect(options()).toHaveLength(3));
+    await act(() => lists);
+    expect(options()).toHaveLength(3);
     expect(selected().textContent).toContain('Failing change');
-    expect(await screen.findByText('Body of pull 3')).toBeTruthy();
+    await settle();
     expect(loadDetails).toHaveBeenCalledWith('https://github.com/octo/repo/pull/3');
+    expect(await screen.findByText('Body of pull 3')).toBeTruthy();
   });
 
   it("shows the card's lists until the full ones arrive, and says when that fails", async () => {
@@ -66,16 +92,21 @@ describe('RepoDetails', () => {
   });
 
   it('moves the selection with the arrow keys and caches details', async () => {
-    const { loadDetails } = setup();
-    await waitFor(() => expect(options()).toHaveLength(3));
+    const user = fakeClock();
+    const lists = Promise.resolve<RepoResult | undefined>(full);
+    const { loadDetails } = setup({ lists });
+    await act(() => lists);
+    expect(options()).toHaveLength(3);
     const list = screen.getByRole('listbox');
     list.focus();
-    await userEvent.keyboard('{ArrowDown}');
+    await user.keyboard('{ArrowDown}');
     expect(selected().textContent).toContain('Ready change');
-    await userEvent.keyboard('{End}');
+    await user.keyboard('{End}');
     expect(selected().textContent).toContain('Draft change');
+    await settle();
     expect(await screen.findByText('Body of pull 1')).toBeTruthy();
-    await userEvent.keyboard('{Home}');
+    await user.keyboard('{Home}');
+    await settle();
     expect(await screen.findByText('Body of pull 3')).toBeTruthy();
     // Back on the first item: served from the cache, not fetched again.
     expect(loadDetails.mock.calls.filter(([url]) => url.endsWith('/pull/3'))).toHaveLength(1);

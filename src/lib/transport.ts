@@ -5,6 +5,8 @@
  */
 
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
+import { message } from '@tauri-apps/plugin-dialog';
 import type { GitHubOperation } from '../providers/github/queries';
 import type { ProviderId } from '../providers/types';
 
@@ -166,4 +168,34 @@ export function fetchImage(url: string): Promise<string> {
 /** Opens a GitHub or connected-GitLab page in the system browser. */
 export function openExternalUrl(url: string): Promise<void> {
   return call<void>('open_external', { url });
+}
+
+/** Sent by the macOS app menu's "Check for Updates…" (`src-tauri/src/menu.rs`). */
+export const CHECK_FOR_UPDATES_EVENT = 'check-for-updates';
+
+/** Calls `handler` when the app menu asks for an update check; returns a function that stops listening. */
+export function onCheckForUpdates(handler: () => void): () => void {
+  let stopped = false;
+  let unlisten: (() => void) | null = null;
+  listen(CHECK_FOR_UPDATES_EVENT, () => handler()).then(
+    (off) => {
+      if (stopped) off();
+      else unlisten = off;
+    },
+    // Outside the app (a browser preview) there is no menu to listen to.
+    () => undefined,
+  );
+  return () => {
+    stopped = true;
+    unlisten?.();
+  };
+}
+
+/** A system alert with an OK button: the app's own icon, `title` in bold and `detail` below it. */
+export async function showAlert(title: string, detail: string, kind: 'info' | 'error'): Promise<void> {
+  try {
+    await message(detail, { title, kind });
+  } catch {
+    // Outside the app (a browser preview) there is no system alert.
+  }
 }

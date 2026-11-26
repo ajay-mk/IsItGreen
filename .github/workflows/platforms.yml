@@ -1,19 +1,24 @@
 name: Platforms
 
 # CI builds the Tauri backend on Linux only. The macOS and Windows code paths
-# live in dependencies (the keychain backends), so check them whenever the
-# Rust dependencies change, which is what Dependabot's Cargo updates do.
+# live in dependencies (the keychain backends) and in the backend's own
+# platform-specific code (the macOS app menu in src/menu.rs), so check them
+# whenever either changes, including Dependabot's Cargo updates.
 on:
   push:
     branches: [main]
     paths:
       - src-tauri/Cargo.toml
       - src-tauri/Cargo.lock
+      - src-tauri/build.rs
+      - src-tauri/src/**
       - .github/workflows/platforms.yml
   pull_request:
     paths:
       - src-tauri/Cargo.toml
       - src-tauri/Cargo.lock
+      - src-tauri/build.rs
+      - src-tauri/src/**
       - .github/workflows/platforms.yml
 
 permissions:

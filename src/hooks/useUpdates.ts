@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { relaunch } from '@tauri-apps/plugin-process';
 import { check, type Update } from '@tauri-apps/plugin-updater';
-import { saveWindowState } from '../lib/transport';
+import { onCheckForUpdates, saveWindowState, showAlert } from '../lib/transport';
 
 export type UpdateState =
   | { kind: 'idle' }
@@ -20,6 +20,14 @@ export interface Updates {
   /** Whether the banner was dismissed for the update it would show. */
   dismissed: boolean;
   checkNow: () => void;
+  /**
+   * A check from the app menu, which has no place in the window to report
+   * its outcome: "up to date" and failures are shown in a system alert, and
+   * an update in the banner, even one dismissed before. A failed check that
+   * already knows of an update offers that update instead of an error, as a
+   * check from Settings does: it is still newer and can still be installed.
+   */
+  checkFromMenu: () => void;
   install: () => void;
   dismiss: () => void;
 }
@@ -56,9 +64,10 @@ export function useUpdates(auto: boolean): Updates {
     if (prev && prev !== next) void prev.close().catch(() => undefined);
   }, []);
 
+  /** Resolves to the state a manual check ends in, or null if it was cut short. */
   const run = useCallback(
-    async (manual: boolean) => {
-      if (installing.current) return;
+    async (manual: boolean): Promise<UpdateState | null> => {
+      if (installing.current) return null;
       if (manual) setState({ kind: 'checking' });
       let pending = checking.current;
       if (!pending) {
@@ -79,21 +88,25 @@ export function useUpdates(auto: boolean): Updates {
       }
       try {
         const found = await pending;
-        if (installing.current) return;
-        if (found) setState({ kind: 'available', version: found.version });
-        else setState(manual ? { kind: 'current' } : { kind: 'idle' });
+        if (installing.current) return null;
+        const next: UpdateState = found
+          ? { kind: 'available', version: found.version }
+          : manual
+            ? { kind: 'current' }
+            : { kind: 'idle' };
+        setState(next);
+        return next;
       } catch (err) {
         // An automatic check fails quietly (offline, no release yet) and
         // keeps showing an update it found earlier.
-        if (manual && !installing.current) {
-          // An update found earlier can still be installed.
-          const known = update.current;
-          setState(
-            known
-              ? { kind: 'available', version: known.version }
-              : { kind: 'error', message: `Could not check for updates: ${message(err)}` },
-          );
-        }
+        if (!manual || installing.current) return null;
+        // An update found earlier can still be installed.
+        const known = update.current;
+        const next: UpdateState = known
+          ? { kind: 'available', version: known.version }
+          : { kind: 'error', message: `Could not check for updates: ${message(err)}` };
+        setState(next);
+        return next;
       }
     },
     [replace],
@@ -156,6 +169,18 @@ export function useUpdates(auto: boolean): Updates {
 
   const checkNow = useCallback(() => void run(true), [run]);
 
+  const checkFromMenu = useCallback(() => {
+    // Asking again brings back an update the banner was dismissed for.
+    setDismissedVersion(null);
+    void run(true).then((next) => {
+      if (next?.kind === 'current') void showAlert('IsItGreen is up to date.', 'You have the newest version.', 'info');
+      else if (next?.kind === 'error') void showAlert('Could not check for updates', next.message, 'error');
+    });
+  }, [run]);
+
+  // "Check for Updates…" in the macOS app menu.
+  useEffect(() => onCheckForUpdates(checkFromMenu), [checkFromMenu]);
+
   const dismissed = state.kind === 'available' && state.version === dismissedVersion;
-  return { state, dismissed, checkNow, install, dismiss };
+  return { state, dismissed, checkNow, checkFromMenu, install, dismiss };
 }

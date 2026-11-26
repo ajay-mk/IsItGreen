@@ -5,7 +5,7 @@ import type { Updates, UpdateState } from '../hooks/useUpdates';
 import { UpdateBanner } from './UpdateBanner';
 
 function updates(state: UpdateState, dismissed = false): Updates {
-  return { state, dismissed, checkNow: vi.fn(), install: vi.fn(), dismiss: vi.fn() };
+  return { state, dismissed, checkNow: vi.fn(), checkFromMenu: vi.fn(), install: vi.fn(), dismiss: vi.fn() };
 }
 
 describe('UpdateBanner', () => {

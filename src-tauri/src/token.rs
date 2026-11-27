@@ -31,10 +31,10 @@ const MIN_TOKEN_LEN: usize = 20;
 const MAX_OWNER_LEN: usize = 39;
 /// Upper bound on per-owner tokens, which also bounds the index entry size.
 pub const MAX_OWNER_TOKENS: usize = 20;
-/// How long a token read from the GitHub CLI is used before gh is asked
-/// again. `gh auth logout` does not revoke the token, so this is what makes
-/// signing out of gh disconnect IsItGreen too.
-pub const GH_RECHECK: Duration = Duration::from_secs(60);
+/// How long a token read from the GitHub or GitLab CLI is used before the
+/// CLI is asked again. `gh auth logout` does not revoke the token, so this is
+/// what makes signing out of gh disconnect IsItGreen too.
+pub const CLI_RECHECK: Duration = Duration::from_secs(60);
 /// A token read from the GitLab CLI that expires within this margin is not
 /// used again: glab is asked for a refreshed one instead.
 pub const GLAB_EXPIRY_MARGIN: Duration = Duration::from_secs(30);
@@ -316,7 +316,7 @@ impl GlabCached {
             at.duration_since(SystemTime::now())
                 .is_ok_and(|left| left > GLAB_EXPIRY_MARGIN)
         });
-        self.checked_at.elapsed() < GH_RECHECK && lasts
+        self.checked_at.elapsed() < CLI_RECHECK && lasts
     }
 }
 
@@ -340,7 +340,7 @@ impl Inner {
         let fresh = self
             .gh_checked
             .get(&key)
-            .is_some_and(|at| at.elapsed() < GH_RECHECK);
+            .is_some_and(|at| at.elapsed() < CLI_RECHECK);
         Some((token, fresh))
     }
 
@@ -459,7 +459,7 @@ impl TokenStore {
     }
 
     /// The GitHub CLI token for `slot` already in memory, if the slot is still
-    /// linked to `login`, and whether gh confirmed it within [`GH_RECHECK`].
+    /// linked to `login`, and whether gh confirmed it within [`CLI_RECHECK`].
     pub fn cached_gh(
         &self,
         provider: Provider,
@@ -541,7 +541,7 @@ impl TokenStore {
 
     /// The GitLab CLI token already in memory, if the default GitLab slot is
     /// still linked to `login` on `host`, and whether it is fresh: read within
-    /// [`GH_RECHECK`] and not about to expire.
+    /// [`CLI_RECHECK`] and not about to expire.
     pub fn cached_glab(&self, host: &Host, login: &str) -> Option<(String, bool)> {
         self.lock().ok()?.glab_cached(host, login)
     }
@@ -1100,7 +1100,7 @@ mod tests {
         ));
         // Once the check is old, gh is asked again (so `gh auth logout`
         // takes effect), though the old token is still known for comparison.
-        let aged = Instant::now() - GH_RECHECK - Duration::from_secs(1);
+        let aged = Instant::now() - CLI_RECHECK - Duration::from_secs(1);
         store
             .lock()
             .unwrap()
@@ -1333,7 +1333,7 @@ mod tests {
             "jane.doe",
             &glab_token("glpat-checked0123456789", None),
         );
-        age_glab_check(&store, GH_RECHECK + Duration::from_secs(1));
+        age_glab_check(&store, CLI_RECHECK + Duration::from_secs(1));
         assert_eq!(picked(&store), ask_glab("gitlab.example.com", "jane.doe"));
     }
 

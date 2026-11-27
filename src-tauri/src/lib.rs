@@ -70,7 +70,7 @@ pub fn run() {
         gitlab: gitlab::GitLabClient::new().expect("failed to initialise HTTP client"),
         images: images::ImageClient::new().expect("failed to initialise HTTP client"),
         gh_read: tauri::async_runtime::Mutex::new(()),
-        glab_read: tauri::async_runtime::Mutex::new(()),
+        glab_read: tauri::async_runtime::Mutex::new(None),
     };
 
     let tokens = Arc::clone(&state.tokens);

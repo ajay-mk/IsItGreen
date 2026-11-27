@@ -9,12 +9,15 @@ use tauri_plugin_opener::OpenerExt;
 use crate::error::{Error, Result};
 use crate::github::GitHubClient;
 use crate::gitlab::{GitLabClient, Host, GITLAB_COM};
+use crate::glab::GlabToken;
 use crate::images::ImageClient;
 use crate::token::{
     validate_format, Owner, Provider, Resolved, ResolvedGitLab, Slot, TokenStore, TokenSummary,
 };
 use crate::{gh, github_queries, gitlab_queries, glab, graphql_guard};
+use std::future::Future;
 use std::sync::Arc;
+use std::time::Instant;
 
 pub struct AppState {
     pub tokens: Arc<TokenStore>,
@@ -24,8 +27,16 @@ pub struct AppState {
     /// Held while a token is read from the GitHub CLI, so requests that
     /// arrive together (as they do at startup) run gh once, not each.
     pub gh_read: async_runtime::Mutex<()>,
-    /// The same for the GitLab CLI.
-    pub glab_read: async_runtime::Mutex<()>,
+    /// The same for the GitLab CLI. It also holds the last failed glab read,
+    /// which requests that were already waiting when it failed return
+    /// instead of each running glab again.
+    pub glab_read: async_runtime::Mutex<Option<GlabFailure>>,
+}
+
+/// A failed glab read and when it failed.
+pub struct GlabFailure {
+    at: Instant,
+    error: Error,
 }
 
 /// Runs a blocking keychain operation off the async runtime's worker threads.
@@ -245,7 +256,7 @@ pub async fn token_link_gh(state: State<'_, AppState>, owner: Option<String>) ->
 #[tauri::command]
 pub async fn token_link_glab(state: State<'_, AppState>, host: Option<String>) -> Result<String> {
     let host = Host::parse(host.as_deref().unwrap_or(GITLAB_COM))?;
-    let _one_at_a_time = state.glab_read.lock().await;
+    let mut last_failure = state.glab_read.lock().await;
     let asked = host.clone();
     let token = async_runtime::spawn_blocking(move || glab::token(&asked))
         .await
@@ -253,6 +264,9 @@ pub async fn token_link_glab(state: State<'_, AppState>, host: Option<String>) -
     let login = state.gitlab.viewer_login(&host, &token.token).await?;
     let pinned = login.clone();
     blocking(&state.tokens, move |t| t.link_glab(&host, &pinned, &token)).await?;
+    // glab works again, so requests waiting since an earlier failure read it
+    // rather than repeat that failure.
+    *last_failure = None;
     Ok(login)
 }
 
@@ -294,34 +308,80 @@ pub async fn gitlab_graphql(
 /// account `login` on `host`. As in [`read_gh`], a token glab has not given
 /// before is used only once GitLab confirms it belongs to that account.
 async fn read_glab(state: &State<'_, AppState>, host: &Host, login: String) -> Result<String> {
-    let _one_at_a_time = state.glab_read.lock().await;
+    let started = Instant::now();
+    let read = || {
+        let asked = host.clone();
+        async move {
+            async_runtime::spawn_blocking(move || glab::token(&asked))
+                .await
+                .map_err(|_| Error::Internal)?
+        }
+    };
+    let viewer = |token: String| async move { state.gitlab.viewer_login(host, &token).await };
+    read_glab_with(
+        &state.tokens,
+        &state.glab_read,
+        started,
+        host,
+        &login,
+        read,
+        viewer,
+    )
+    .await
+}
+
+/// The steps of [`read_glab`], with running glab (`read`) and asking GitLab
+/// whose token it is (`viewer`) passed in. `started` is when the request
+/// began waiting for `glab_read`.
+async fn read_glab_with<R, RF, V, VF>(
+    tokens: &TokenStore,
+    glab_read: &async_runtime::Mutex<Option<GlabFailure>>,
+    started: Instant,
+    host: &Host,
+    login: &str,
+    read: R,
+    viewer: V,
+) -> Result<String>
+where
+    R: FnOnce() -> RF,
+    RF: Future<Output = Result<GlabToken>>,
+    V: FnOnce(String) -> VF,
+    VF: Future<Output = Result<String>>,
+{
+    let mut last_failure = glab_read.lock().await;
     // Whoever held the lock before may have just read it.
-    let cached = state.tokens.cached_glab(host, &login);
+    let cached = tokens.cached_glab(host, login);
     if let Some((token, true)) = &cached {
         return Ok(token.clone());
     }
-    let asked = host.clone();
-    let read = async_runtime::spawn_blocking(move || glab::token(&asked))
-        .await
-        .map_err(|_| Error::Internal)?;
-    let token = match read {
+    // Or glab just failed while this request waited: running it again at
+    // once would fail the same way, so return that failure.
+    if let Some(failure) = last_failure.as_ref().filter(|f| f.at >= started) {
+        return Err(failure.error.clone());
+    }
+    let token = match read().await {
         Ok(token) => token,
         Err(err) => {
             // Signed out of glab (or glab is gone): stop using the old token.
-            state.tokens.forget_cached(Provider::GitLab, &Slot::Default);
+            tokens.forget_cached(Provider::GitLab, &Slot::Default);
+            *last_failure = Some(GlabFailure {
+                at: Instant::now(),
+                error: err.clone(),
+            });
             return Err(err);
         }
     };
+    *last_failure = None;
     // The same token glab gave before was already checked with GitLab. An
     // OAuth refresh gives a new one, which is checked again.
     let known = cached.is_some_and(|(old, _)| old == token.token);
     if !known {
-        let owner = state.gitlab.viewer_login(host, &token.token).await?;
-        if !owner.eq_ignore_ascii_case(&login) {
+        let owner = viewer(token.token.clone()).await?;
+        if !owner.eq_ignore_ascii_case(login) {
             return Err(Error::GlabAccountMismatch);
         }
     }
-    state.tokens.remember_glab(host, &login, &token);
+    tokens.remember_glab(host, login, &token);
     Ok(token.token)
 }
 
@@ -371,6 +431,190 @@ fn is_allowed_link(url: &Url, gitlab: Option<&Host>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::cell::Cell;
+    use std::time::{Duration, SystemTime};
+
+    const LOGIN: &str = "jane.doe";
+
+    fn host() -> Host {
+        Host::parse("gitlab.example.com").unwrap()
+    }
+
+    fn glab_token(token: &str) -> GlabToken {
+        GlabToken {
+            token: token.into(),
+            expires: None,
+        }
+    }
+
+    /// A store whose default GitLab slot is linked to glab with `token`
+    /// cached, fresh unless it `expires` soon.
+    fn linked(token: &str, expires: Option<SystemTime>) -> TokenStore {
+        keyring::set_default_credential_builder(keyring::mock::default_credential_builder());
+        let store = TokenStore::default();
+        let token = GlabToken {
+            token: token.into(),
+            expires,
+        };
+        store.link_glab(&host(), LOGIN, &token).unwrap();
+        store
+    }
+
+    /// Expires within `GLAB_EXPIRY_MARGIN`, so the cached token is stale.
+    fn soon() -> Option<SystemTime> {
+        Some(SystemTime::now() + Duration::from_secs(10))
+    }
+
+    /// Runs `read_glab_with` with a glab that answers `glab` and a GitLab
+    /// that says the token belongs to `viewer`; returns the result and how
+    /// often each was asked.
+    fn run(
+        tokens: &TokenStore,
+        glab_read: &async_runtime::Mutex<Option<GlabFailure>>,
+        started: Instant,
+        glab: Result<GlabToken>,
+        viewer: &str,
+    ) -> (Result<String>, usize, usize) {
+        let reads = Cell::new(0);
+        let lookups = Cell::new(0);
+        let result = async_runtime::block_on(read_glab_with(
+            tokens,
+            glab_read,
+            started,
+            &host(),
+            LOGIN,
+            || {
+                reads.set(reads.get() + 1);
+                async move { glab }
+            },
+            |_token| {
+                lookups.set(lookups.get() + 1);
+                let viewer = viewer.to_owned();
+                async move { Ok(viewer) }
+            },
+        ));
+        (result, reads.get(), lookups.get())
+    }
+
+    fn cached(tokens: &TokenStore) -> Option<String> {
+        tokens.cached_glab(&host(), LOGIN).map(|(token, _)| token)
+    }
+
+    #[test]
+    fn a_fresh_glab_token_is_used_without_running_glab() {
+        let tokens = linked("glpat-cached", None);
+        let lock = async_runtime::Mutex::new(None);
+        let (result, reads, lookups) = run(
+            &tokens,
+            &lock,
+            Instant::now(),
+            Err(Error::GlabFailed),
+            LOGIN,
+        );
+        assert_eq!(result.unwrap(), "glpat-cached");
+        assert_eq!((reads, lookups), (0, 0));
+    }
+
+    #[test]
+    fn the_same_glab_token_again_is_not_checked_with_gitlab() {
+        let tokens = linked("glpat-cached", soon());
+        let lock = async_runtime::Mutex::new(None);
+        let (result, reads, lookups) = run(
+            &tokens,
+            &lock,
+            Instant::now(),
+            Ok(glab_token("glpat-cached")),
+            "someone-else",
+        );
+        assert_eq!(result.unwrap(), "glpat-cached");
+        assert_eq!((reads, lookups), (1, 0));
+        // Remembered again, now fresh.
+        assert_eq!(
+            tokens.cached_glab(&host(), LOGIN),
+            Some(("glpat-cached".to_owned(), true))
+        );
+    }
+
+    #[test]
+    fn a_new_glab_token_for_another_account_is_refused() {
+        let tokens = linked("glpat-cached", soon());
+        let lock = async_runtime::Mutex::new(None);
+        let (result, reads, lookups) = run(
+            &tokens,
+            &lock,
+            Instant::now(),
+            Ok(glab_token("glpat-switched")),
+            "someone-else",
+        );
+        assert!(matches!(result, Err(Error::GlabAccountMismatch)));
+        assert_eq!((reads, lookups), (1, 1));
+        assert_eq!(cached(&tokens).as_deref(), Some("glpat-cached"));
+        // A new token for the linked account is accepted (case aside).
+        let (result, _, lookups) = run(
+            &tokens,
+            &lock,
+            Instant::now(),
+            Ok(glab_token("glpat-refreshed")),
+            "Jane.Doe",
+        );
+        assert_eq!(result.unwrap(), "glpat-refreshed");
+        assert_eq!(lookups, 1);
+        assert_eq!(cached(&tokens).as_deref(), Some("glpat-refreshed"));
+    }
+
+    #[test]
+    fn a_glab_failure_drops_the_cached_token() {
+        let tokens = linked("glpat-cached", soon());
+        let lock = async_runtime::Mutex::new(None);
+        let (result, reads, _) = run(
+            &tokens,
+            &lock,
+            Instant::now(),
+            Err(Error::GlabNotLoggedIn),
+            LOGIN,
+        );
+        assert!(matches!(result, Err(Error::GlabNotLoggedIn)));
+        assert_eq!(reads, 1);
+        assert_eq!(cached(&tokens), None);
+    }
+
+    #[test]
+    fn requests_waiting_during_a_glab_failure_share_it() {
+        let tokens = linked("glpat-cached", soon());
+        let lock = async_runtime::Mutex::new(None);
+        let waiting_since = Instant::now();
+        let (result, reads, _) = run(
+            &tokens,
+            &lock,
+            waiting_since,
+            Err(Error::GlabNotLoggedIn),
+            LOGIN,
+        );
+        assert!(matches!(result, Err(Error::GlabNotLoggedIn)));
+        assert_eq!(reads, 1);
+        // Waiting since before the failure: no second glab run.
+        let (result, reads, _) = run(
+            &tokens,
+            &lock,
+            waiting_since,
+            Ok(glab_token("glpat-cached")),
+            LOGIN,
+        );
+        assert!(matches!(result, Err(Error::GlabNotLoggedIn)));
+        assert_eq!(reads, 0);
+        // A request that starts after the failure runs glab again.
+        let failed_at = async_runtime::block_on(lock.lock()).as_ref().unwrap().at;
+        let (result, reads, _) = run(
+            &tokens,
+            &lock,
+            failed_at + Duration::from_millis(1),
+            Ok(glab_token("glpat-cached")),
+            LOGIN,
+        );
+        assert_eq!(result.unwrap(), "glpat-cached");
+        assert_eq!(reads, 1);
+        assert!(async_runtime::block_on(lock.lock()).is_none());
+    }
 
     #[test]
     fn link_allow_list() {

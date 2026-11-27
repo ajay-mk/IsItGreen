@@ -4,7 +4,7 @@ use serde::Serialize;
 ///
 /// Messages are written by us and never include the access token or raw
 /// response bodies, so they are safe to display.
-#[derive(Debug, thiserror::Error)]
+#[derive(Clone, Debug, thiserror::Error)]
 pub enum Error {
     #[error("No access token configured")]
     NoToken,

@@ -182,9 +182,12 @@ on that instance:
 - **Sign-out and revocation.** IsItGreen asks glab again at least once a
   minute, and sooner when glab reports that the token is about to expire. If
   you sign out of glab (`glab auth logout`), IsItGreen disconnects within a
-  minute. A token revoked on GitLab can take up to a minute to be noticed,
-  because GitLab answers a rejected token as an anonymous request, not as an
-  error.
+  minute. This holds even when a token was set for glab without an instance
+  (`glab config set token --global`): IsItGreen refuses such a token, so it
+  never links to one. A token revoked on GitLab is a different case. glab
+  still returns it, so the recheck does not notice. The next request fails,
+  because GitLab answers a rejected token as an anonymous request, and
+  IsItGreen shows the setup screen so you can link again.
 - **It can also make changes.** glab's token carries the `api` scope, which
   can write. IsItGreen itself only ever runs its own read-only queries
   ([SECURITY.md](../SECURITY.md)), but prefer a `read_api` token if you want
@@ -196,7 +199,15 @@ on that instance:
   another instance replaces the link. As with a token, one GitLab instance is
   connected at a time, and there are no per-owner links.
 - **Only login tokens.** IsItGreen accepts glab's personal access token and
-  OAuth logins. It refuses a CI job token.
+  OAuth logins. It refuses a CI job token, and a token that glab holds for no
+  particular instance. If that is the only token glab has, linking says GitLab
+  CLI is not signed in to this instance; run `glab auth login --hostname
+  <your instance>`.
+- **Some glab setups cannot be linked.** If glab's entry for your instance
+  uses `api_host`, or the instance is installed under a subfolder, glab
+  reports the API host or the path as the instance. IsItGreen refuses that
+  and shows "Could not get a token from GitLab CLI". Use a personal access
+  token instead.
 - **Where glab must be installed.** IsItGreen only runs glab from its usual
   install locations, never from `PATH`; see
   [Setting up GitLab CLI](#setting-up-gitlab-cli).

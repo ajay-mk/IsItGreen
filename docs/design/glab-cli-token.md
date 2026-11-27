@@ -38,16 +38,28 @@ about a live link versus a one-time import, which applies here unchanged.
   to "not signed in" only for `code` `not_authenticated`, or `refresh_failed`
   with `oauth_error` `invalid_grant`. Before glab 1.127 there is no `code`, so
   the message text "not authenticated" is matched instead. Any other error is
-  a generic failure. Output that is not JSON means a glab older than 1.85,
-  which prints the help for `glab auth` and exits 0.
+  a generic failure. glab configs that use `api_host`, or an instance under a
+  subfolder, report the API host or path as `instance_url`; the instance
+  check refuses it and the user sees the generic failure message. A token
+  that glab keeps outside any host (`glab config set token --global`) would
+  answer for every host, so IsItGreen also asks for a reserved `.invalid`
+  host on every read. The same token for it means glab has no login for the
+  instance, reported as not signed in; a different token or "not
+  authenticated" lets the token through, and any other failure keeps it
+  unused. Output that is not JSON means a glab older than 1.85, which
+  prints the help for `glab auth` and exits 0.
 - **Rechecks.** A cached token is reused for 60 seconds, the same as for gh,
   and not when it expires within 30 seconds (`GLAB_EXPIRY_MARGIN`). A token
   glab gave before is not checked with GitLab again. A different one is
   checked, and must belong to the linked login.
-- **A revoked token is noticed late.** GitLab answers a rejected token as an
-  anonymous request, not with HTTP 401, so the 401 path that heals a gh link
-  does not fire. A token revoked on GitLab is noticed at the next recheck,
-  within 60 seconds or at its expiry. There is no frontend handling for it.
+- **A revoked token is not noticed by the recheck.** The recheck asks glab
+  again, but glab returns the same token, and the same token skips the GitLab
+  check. GitLab answers a rejected token as an anonymous request, not with
+  HTTP 401, so the 401 path that heals a gh link does not fire. The
+  frontend's `requireViewer` (`src/providers/gitlab/index.ts`) turns the
+  missing signed-in user into `unauthorized`, and the setup screen appears.
+  Signing out of glab is noticed by the recheck, since glab then gives no
+  token.
 - **Setup order.** Both tabs of the setup screen show the CLI login first
   (a button when the CLI is found, setup steps and **Check again** when not),
   then the token form. The form stays visible, so the CLI is the first choice

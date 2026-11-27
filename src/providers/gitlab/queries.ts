@@ -48,11 +48,7 @@ export const OPEN_MRS_FETCHED = 50;
  */
 export const PROJECTS_PER_REQUEST = 2;
 
-/**
- * Pipelines of the default branch's head commit searched for the branch's
- * own. Must match the literal count in the projects document in
- * `src-tauri/src/gitlab_queries.rs`.
- */
+/** Pipelines of the default branch's head commit searched for the branch's own. */
 export const PIPELINES_FETCHED = 10;
 
 /** Where the backend puts the signed-in user in the projects and project-list queries. */
@@ -67,6 +63,8 @@ export function projectAlias(index: number): string {
 export interface ProjectSpec {
   path: string;
   ci: boolean;
+  /** Pipelines to fetch; set exactly when `ci` is. */
+  pipelines: number | null;
   mergeRequests: number | null;
   issues: { limit: number; label: string | null } | null;
 }
@@ -76,9 +74,11 @@ export function buildProjectsRequest(repos: readonly PinnedRepo[]): { projects: 
   return {
     projects: repos.map((repo) => {
       const issues = repo.widgets.find((w) => w.type === 'issues');
+      const ci = repo.widgets.some((w) => w.type === 'ci');
       return {
         path: `${repo.owner}/${repo.name}`,
-        ci: repo.widgets.some((w) => w.type === 'ci'),
+        ci,
+        pipelines: ci ? PIPELINES_FETCHED : null,
         mergeRequests: repo.widgets.some((w) => w.type === 'pullRequests') ? OPEN_MRS_FETCHED : null,
         issues: issues ? { limit: issues.limit, label: issues.label || null } : null,
       };

@@ -54,17 +54,6 @@ macro_rules! issue_fields {
     };
 }
 
-/// The default branch's tree, whose last commit is the branch head. That
-/// commit's newest pipeline can belong to another ref (a merge request, a
-/// branch at the same commit) or be a scan that does not count towards the
-/// branch's status, so a few are fetched and the frontend chooses. The 10
-/// must match `PIPELINES_FETCHED` in `src/providers/gitlab/queries.ts`.
-macro_rules! ci_tree {
-    () => {
-        "tree { lastCommit { pipelines(first: 10) { nodes { status ref source } } } }"
-    };
-}
-
 /// The default branch's own pipelines on its head commit, for when the
 /// project query's unfiltered page held none of them.
 const BRANCH_PIPELINE: &str = concat!(
@@ -149,6 +138,10 @@ pub struct ProjectSpec {
     path: String,
     #[serde(default)]
     ci: bool,
+    /// How many pipelines of the default branch's head commit to fetch;
+    /// required with `ci` and refused without it.
+    #[serde(default)]
+    pipelines: Option<u32>,
     /// How many open merge requests to fetch, if the card shows them.
     #[serde(default)]
     merge_requests: Option<u32>,
@@ -250,10 +243,21 @@ pub fn projects_query(projects: &[ProjectSpec]) -> Result<(String, Value)> {
         );
 
         let mut parts = vec!["fullPath webUrl visibility archived".to_owned()];
-        parts.push(if project.ci {
-            concat!("repository { rootRef ", ci_tree!(), " }").to_owned()
-        } else {
-            "repository { rootRef }".to_owned()
+        // The tree defaults to the default branch, so its last commit is the
+        // branch head. That commit's newest pipeline can belong to another ref
+        // (a merge request, a branch at the same commit) or be a scan that
+        // does not count towards the branch's status, so a few are fetched
+        // and the frontend chooses.
+        parts.push(match (project.ci, project.pipelines) {
+            (true, Some(n)) => {
+                defs.push(format!("$pl{i}: Int!"));
+                vars.insert(format!("pl{i}"), Value::from(list_size(n)?));
+                format!(
+                    "repository {{ rootRef tree {{ lastCommit {{ pipelines(first: $pl{i}) {{ nodes {{ status ref source }} }} }} }} }}"
+                )
+            }
+            (false, None) => "repository { rootRef }".to_owned(),
+            _ => return Err(Error::ForbiddenOperation),
         });
 
         if let Some(n) = project.merge_requests {
@@ -361,15 +365,15 @@ mod tests {
             (
                 "IsItGreenProjects",
                 json!({ "projects": [{
-                    "path": "acme/platform/api", "ci": true, "mergeRequests": 50,
+                    "path": "acme/platform/api", "ci": true, "pipelines": 10, "mergeRequests": 50,
                     "issues": { "limit": 3, "label": "bug" },
                 }] }),
             ),
             (
                 "IsItGreenProjects",
                 json!({ "projects": [
-                    { "path": "acme/platform/api", "ci": true, "mergeRequests": null, "issues": null },
-                    { "path": "acme/platform/api", "ci": false, "mergeRequests": null,
+                    { "path": "acme/platform/api", "ci": true, "pipelines": 10, "mergeRequests": null, "issues": null },
+                    { "path": "acme/platform/api", "ci": false, "pipelines": null, "mergeRequests": null,
                       "issues": { "limit": 1, "label": null } },
                 ] }),
             ),
@@ -484,7 +488,7 @@ mod tests {
             "IsItGreenAssignedIssues",
             json!({ "me": "a", "n": 5, "nn": 5 }),
         );
-        let spec = json!({ "path": "a/b", "ci": true });
+        let spec = json!({ "path": "a/b", "ci": true, "pipelines": 10 });
         accepted("IsItGreenProjects", projects(spec.clone()));
         refused(
             "IsItGreenProjects",
@@ -513,7 +517,27 @@ mod tests {
     fn missing_required_variables_are_refused() {
         refused("IsItGreenProjectList", json!({}));
         refused("IsItGreenProjects", json!({}));
-        refused("IsItGreenProjects", projects(json!({ "ci": true })));
+        refused(
+            "IsItGreenProjects",
+            projects(json!({ "ci": true, "pipelines": 10 })),
+        );
+        // The pipeline count comes with the CI widget, never alone.
+        refused(
+            "IsItGreenProjects",
+            projects(json!({ "path": "a/b", "ci": true })),
+        );
+        refused(
+            "IsItGreenProjects",
+            projects(json!({ "path": "a/b", "ci": true, "pipelines": null })),
+        );
+        refused(
+            "IsItGreenProjects",
+            projects(json!({ "path": "a/b", "pipelines": 10 })),
+        );
+        refused(
+            "IsItGreenProjects",
+            projects(json!({ "path": "a/b", "ci": false, "pipelines": 10 })),
+        );
         let inbox = json!({ "n": 5, "withReview": true, "withMine": true, "withAssigned": true });
         for key in ["n", "withReview", "withMine", "withAssigned"] {
             refused("IsItGreenInbox", without(&inbox, key));
@@ -582,6 +606,10 @@ mod tests {
             (
                 "IsItGreenDetails",
                 json!({ "path": "a/b", "iid": "1", "n": n, "mr": true }),
+            ),
+            (
+                "IsItGreenProjects",
+                projects(json!({ "path": "a/b", "ci": true, "pipelines": n })),
             ),
             (
                 "IsItGreenProjects",
@@ -681,7 +709,7 @@ mod tests {
         let evil_label = "\"}) { id } mutation {";
         let shape = |path: &str, label: &str| {
             projects(json!({
-                "path": path, "ci": true, "mergeRequests": 50,
+                "path": path, "ci": true, "pipelines": 10, "mergeRequests": 50,
                 "issues": { "limit": 3, "label": label },
             }))
         };
@@ -698,7 +726,7 @@ mod tests {
         let (query, vars) = accepted(
             "IsItGreenProjects",
             json!({ "projects": [
-                { "path": "a/b", "ci": true, "mergeRequests": 50,
+                { "path": "a/b", "ci": true, "pipelines": 10, "mergeRequests": 50,
                   "issues": { "limit": 3, "label": "bug" } },
                 { "path": "c/d", "issues": { "limit": 2 } },
             ] }),
@@ -713,7 +741,7 @@ mod tests {
         assert!(query.contains("p1: project(fullPath: $path1)"), "{query}");
         assert_eq!(
             vars,
-            json!({ "path0": "a/b", "mr0": 50, "is0": 3, "il0": ["bug"], "path1": "c/d", "is1": 2 })
+            json!({ "path0": "a/b", "pl0": 10, "mr0": 50, "is0": 3, "il0": ["bug"], "path1": "c/d", "is1": 2 })
         );
     }
 
@@ -721,21 +749,22 @@ mod tests {
     fn projects_query_only_requests_enabled_widgets() {
         let (query, vars) = accepted(
             "IsItGreenProjects",
-            projects(json!({ "path": "a/b", "ci": true })),
+            projects(json!({ "path": "a/b", "ci": true, "pipelines": 10 })),
         );
         let query = flat(&query);
+        assert!(query.contains("$pl0: Int!"), "{query}");
         assert!(
-            query.contains("pipelines(first: 10) { nodes { status ref source } }"),
+            query.contains("pipelines(first: $pl0) { nodes { status ref source } }"),
             "{query}"
         );
         assert!(!query.contains("mergeRequests("), "{query}");
         assert!(!query.contains("issues("), "{query}");
-        assert_eq!(vars, json!({ "path0": "a/b" }));
+        assert_eq!(vars, json!({ "path0": "a/b", "pl0": 10 }));
 
         // Widgets off, written both as null and left out.
         for spec in [
             json!({ "path": "a/b" }),
-            json!({ "path": "a/b", "ci": false, "mergeRequests": null, "issues": null }),
+            json!({ "path": "a/b", "ci": false, "pipelines": null, "mergeRequests": null, "issues": null }),
         ] {
             let (query, vars) = accepted("IsItGreenProjects", projects(spec));
             assert!(!query.contains("pipelines"), "{query}");
@@ -759,8 +788,8 @@ mod tests {
 
     #[test]
     fn at_most_two_projects_per_request() {
-        let one = || json!({ "path": "a/b", "ci": true });
-        // `PROJECTS_PER_REQUEST` in src/providers/gitlab/index.ts sends two.
+        let one = || json!({ "path": "a/b", "ci": true, "pipelines": 10 });
+        // `PROJECTS_PER_REQUEST` in src/providers/gitlab/queries.ts sends two.
         accepted("IsItGreenProjects", json!({ "projects": [one(), one()] }));
         refused(
             "IsItGreenProjects",

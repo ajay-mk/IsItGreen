@@ -92,17 +92,17 @@ describe('buildProjectsRequest', () => {
   // The query text itself is built and tested in the backend.
   it('describes each project card for the backend', () => {
     expect(buildProjectsRequest([project])).toEqual({
-      projects: [{ path: 'acme/platform/api', ci: true, mergeRequests: 50, issues: { limit: 3, label: 'bug' } }],
+      projects: [{ path: 'acme/platform/api', ci: true, pipelines: 10, mergeRequests: 50, issues: { limit: 3, label: 'bug' } }],
     });
   });
 
   it('only asks for sections of enabled widgets', () => {
     expect(buildProjectsRequest([{ ...project, widgets: [{ type: 'ci' }] }]).projects).toEqual([
-      { path: 'acme/platform/api', ci: true, mergeRequests: null, issues: null },
+      { path: 'acme/platform/api', ci: true, pipelines: 10, mergeRequests: null, issues: null },
     ]);
     expect(
       buildProjectsRequest([{ ...project, widgets: [{ type: 'issues', limit: 1, label: null }] }]).projects,
-    ).toEqual([{ path: 'acme/platform/api', ci: false, mergeRequests: null, issues: { limit: 1, label: null } }]);
+    ).toEqual([{ path: 'acme/platform/api', ci: false, pipelines: null, mergeRequests: null, issues: { limit: 1, label: null } }]);
   });
 });
 

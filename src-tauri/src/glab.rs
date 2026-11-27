@@ -22,7 +22,7 @@
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde::Deserialize;
 
@@ -191,14 +191,21 @@ struct ReplyToken {
 /// a `code` (glab before 1.127), only the "not authenticated" message is
 /// recognised.
 fn failure(code: Option<&str>, oauth_error: Option<&str>, message: &str) -> Error {
+    if no_login(code, message)
+        || (code == Some("refresh_failed") && oauth_error == Some("invalid_grant"))
+    {
+        Error::GlabNotLoggedIn
+    } else {
+        Error::GlabFailed
+    }
+}
+
+/// Whether glab says it has no credentials at all for the host, as opposed
+/// to having some it could not use.
+fn no_login(code: Option<&str>, message: &str) -> bool {
     match code {
-        Some("not_authenticated") => Error::GlabNotLoggedIn,
-        Some("refresh_failed") if oauth_error == Some("invalid_grant") => Error::GlabNotLoggedIn,
-        Some(_) => Error::GlabFailed,
-        None if message.to_ascii_lowercase().contains("not authenticated") => {
-            Error::GlabNotLoggedIn
-        }
-        None => Error::GlabFailed,
+        Some(code) => code == "not_authenticated",
+        None => message.to_ascii_lowercase().contains("not authenticated"),
     }
 }
 
@@ -217,20 +224,33 @@ const PROBE_HOST: &str = "isitgreen-probe.invalid";
 /// for any host it has no login for with a top-level `token:` from its
 /// config, and reports the asked host as the instance. If the probe gets
 /// the same token, the token was not issued for `host`, so it is refused.
+/// Both calls share one [`TIMEOUT`].
 fn read(glab: &Path, host: &Host) -> Result<GlabToken> {
+    let start = Instant::now();
     let found = run(command(glab, host), host)?;
     let probe = Host::parse(PROBE_HOST).map_err(|_| Error::Internal)?;
-    // Only a probe that finds no login, or a different token, shows the
-    // token is the host's own; any other failure keeps it unused.
-    match run(command(glab, &probe), &probe) {
-        Ok(other) if other.token == found.token => Err(Error::GlabNotLoggedIn),
-        Ok(_) | Err(Error::GlabNotLoggedIn) => Ok(found),
+    let left = TIMEOUT
+        .checked_sub(start.elapsed())
+        .filter(|left| !left.is_zero())
+        .ok_or(Error::GlabFailed)?;
+    // Only a probe that finds no credentials at all, or a different token,
+    // shows the token is the host's own; any other answer keeps it unused.
+    match ask(command(glab, &probe), &probe, left) {
+        Ok(Some(other)) if other.token == found.token => Err(Error::GlabNotLoggedIn),
+        Ok(_) => Ok(found),
         Err(_) => Err(Error::GlabFailed),
     }
 }
 
+/// Runs a prepared `glab` command for `host` and returns the token.
 fn run(cmd: Command, host: &Host) -> Result<GlabToken> {
-    let out = crate::cli::run(cmd, TIMEOUT).map_err(|_| Error::GlabFailed)?;
+    ask(cmd, host, TIMEOUT)?.ok_or(Error::GlabNotLoggedIn)
+}
+
+/// Like [`run`], within `timeout`, but `Ok(None)` when glab has no
+/// credentials for `host`.
+fn ask(cmd: Command, host: &Host, timeout: Duration) -> Result<Option<GlabToken>> {
+    let out = crate::cli::run(cmd, timeout).map_err(|_| Error::GlabFailed)?;
     // Errors in finding a token exit 0 with a JSON error; a non-zero exit is
     // a command line this glab does not accept.
     if !out.status_ok {
@@ -260,6 +280,9 @@ fn run(cmd: Command, host: &Host) -> Result<GlabToken> {
             message,
         } => {
             let code = code.filter(|c| !c.is_empty());
+            if no_login(code.as_deref(), &message) {
+                return Ok(None);
+            }
             return Err(failure(code.as_deref(), oauth_error.as_deref(), &message));
         }
     };
@@ -276,10 +299,10 @@ fn run(cmd: Command, host: &Host) -> Result<GlabToken> {
         Some(ts) => Some(parse_timestamp(&ts).ok_or(Error::GlabFailed)?),
         None => None,
     };
-    Ok(GlabToken {
+    Ok(Some(GlabToken {
         token: token.token,
         expires,
-    })
+    }))
 }
 
 /// Parses the RFC 3339 time glab writes, such as `2026-11-26T18:28:54.123Z`.
@@ -712,6 +735,23 @@ mod tests {
                 "code": "keyring_unavailable",
                 "host": PROBE_HOST,
                 "message": "could not read the keyring",
+            }),
+        );
+        assert!(matches!(read(&fake.bin, &host()), Err(Error::GlabFailed)));
+    }
+
+    #[test]
+    fn a_probe_whose_refresh_was_refused_keeps_the_token_unused() {
+        let _serial = serial();
+        let fake = by_host(
+            "probe-refresh",
+            &success("https://gitlab.example.com:8443", "pat", PAT),
+            &json!({
+                "type": "error",
+                "code": "refresh_failed",
+                "oauth_error": "invalid_grant",
+                "host": PROBE_HOST,
+                "message": "failed to read the credentials",
             }),
         );
         assert!(matches!(read(&fake.bin, &host()), Err(Error::GlabFailed)));

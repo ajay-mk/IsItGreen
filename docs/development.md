@@ -23,9 +23,13 @@ src/                    React frontend (no access to the token)
   hooks/useDashboard.ts data loading and refresh
 src-tauri/              Rust backend
   src/token.rs          OS keychain token storage (default + per-owner)
-  src/gh.rs             reads the GitHub CLI token (the only process the app runs)
+  src/cli.rs            runs gh or glab (the only processes the app starts)
+  src/gh.rs             reads the GitHub CLI token
+  src/glab.rs           reads the GitLab CLI token
   src/github.rs         GitHub API client (the only place the token is used)
   src/github_queries.rs the GitHub query documents the frontend can name
+  src/gitlab.rs         GitLab API client and instance validation
+  src/gitlab_queries.rs the GitLab query documents the frontend can name
   src/graphql_guard.rs  read-only query enforcement
   capabilities/         least-privilege permissions for the webview
 ```

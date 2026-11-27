@@ -42,13 +42,15 @@ providers can be added (see [Adding a provider](docs/development.md#adding-a-pro
    [Releases](https://github.com/ajay-mk/IsItGreen/releases) page. The builds
    are not code-signed yet; [docs/installing.md](docs/installing.md) explains
    the first-launch warnings and how to verify the download.
-2. Create a read-only GitHub fine-grained token with
+2. Connect an account. If you use [GitHub CLI](https://cli.github.com) or
+   [GitLab CLI](https://gitlab.com/gitlab-org/cli), choose *Use GitHub CLI
+   login* or *Use GitLab CLI login*. That also helps when your organization
+   blocks personal access tokens. Otherwise create a read-only GitHub
+   fine-grained token with
    [this link](https://github.com/settings/personal-access-tokens/new?name=IsItGreen&description=Read-only+access+for+the+IsItGreen+dashboard&metadata=read&contents=read&pull_requests=read&issues=read&statuses=read&actions=read),
    pick the repositories it can see, and paste it into IsItGreen. For GitLab
-   (gitlab.com or self-hosted), use a personal access token with the
-   `read_api` scope instead. If you use [GitHub CLI](https://cli.github.com),
-   you can choose *Use GitHub CLI login* instead of pasting a token, which
-   helps when your organization blocks personal access tokens.
+   (gitlab.com or self-hosted), paste a personal access token with the
+   `read_api` scope instead.
    [docs/tokens.md](docs/tokens.md) covers all of these, plus classic tokens,
    SSO and using several accounts or organizations.
 3. Pin a repository and choose what its card shows.
@@ -56,16 +58,16 @@ providers can be added (see [Adding a provider](docs/development.md#adding-a-pro
 ## Security
 
 Your tokens are stored in the operating system's keychain (or, with GitHub
-CLI, not stored at all) and are never exposed to the app's UI layer. All API
-calls are made by the Rust backend, which only runs IsItGreen's own read-only
-GitHub queries and only allows read-only GraphQL queries for GitLab, to
-`api.github.com` and to the GitLab instance each GitLab token was saved for. See
+CLI or GitLab CLI, not stored at all) and are never exposed to the app's UI
+layer. All API calls are made by the Rust backend, which only runs IsItGreen's
+own read-only GitHub and GitLab queries, to `api.github.com` and to the GitLab
+instance the GitLab connection was made for. See
 [SECURITY.md](SECURITY.md) for the full model and how to report issues.
 
 ## Documentation
 
 - [Installing](docs/installing.md): downloads, checksums, unsigned builds
-- [Access tokens](docs/tokens.md): permissions, SSO, per-owner tokens, GitHub CLI, GitLab
+- [Access tokens](docs/tokens.md): permissions, SSO, per-owner tokens, GitHub CLI, GitLab, GitLab CLI
 - [Development](docs/development.md): building, testing, project layout, adding a provider
 - [Releasing](docs/releasing.md): cutting a release
 

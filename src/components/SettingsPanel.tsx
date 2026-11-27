@@ -455,10 +455,10 @@ function Backup({ config, update }: { config: DashboardConfig; update: Update })
   );
 }
 
-function TokenActions({ provider, viaGh = false, onChangeToken, onSignOut }: {
+function TokenActions({ provider, viaCli = false, onChangeToken, onSignOut }: {
   provider: ProviderId;
-  /** The default token comes from the GitHub CLI rather than the keychain. */
-  viaGh?: boolean;
+  /** The default token comes from the provider's CLI (gh or glab) rather than the keychain. */
+  viaCli?: boolean;
   onChangeToken: (provider: ProviderId) => void;
   onSignOut: (provider: ProviderId) => void;
 }) {
@@ -466,10 +466,10 @@ function TokenActions({ provider, viaGh = false, onChangeToken, onSignOut }: {
   return (
     <div className="actions">
       <button type="button" className="btn" onClick={() => onChangeToken(provider)}>
-        {viaGh ? `Change ${label} connection` : `Replace ${label} token`}
+        {viaCli ? `Change ${label} connection` : `Replace ${label} token`}
       </button>
       <button type="button" className="btn btn-danger" onClick={() => onSignOut(provider)}>
-        {viaGh ? 'Unlink GitHub CLI' : `Remove ${label} token`}
+        {viaCli ? `Unlink ${label} CLI` : `Remove ${label} token`}
       </button>
     </div>
   );
@@ -938,7 +938,7 @@ export function SettingsPanel({
               )}
               <TokenActions
                 provider="github"
-                viaGh={accounts.github.defaultSource === 'gh'}
+                viaCli={accounts.github.defaultSource === 'gh'}
                 onChangeToken={onChangeToken}
                 onSignOut={onSignOut}
               />
@@ -964,10 +964,22 @@ export function SettingsPanel({
             <>
               <p>
                 Connected to <strong>{accounts.gitlab.host ?? 'GitLab'}</strong>
-                {accounts.gitlab.defaultLogin && <> as <strong>{accounts.gitlab.defaultLogin}</strong></>}.
+                {accounts.gitlab.defaultLogin && <> as <strong>{accounts.gitlab.defaultLogin}</strong></>}
+                {accounts.gitlab.defaultSource === 'glab' && <>, from GitLab CLI</>}.
               </p>
               <p className="hint">One token covers every group and project your GitLab account can see.</p>
-              <TokenActions provider="gitlab" onChangeToken={onChangeToken} onSignOut={onSignOut} />
+              {accounts.gitlab.defaultSource === 'glab' && (
+                <p className="hint">
+                  IsItGreen keeps no copy of this token and asks GitLab CLI for it when needed. It can also make changes;
+                  IsItGreen only ever sends read-only queries.
+                </p>
+              )}
+              <TokenActions
+                provider="gitlab"
+                viaCli={accounts.gitlab.defaultSource === 'glab'}
+                onChangeToken={onChangeToken}
+                onSignOut={onSignOut}
+              />
             </>
           ) : (
             <NotConnected provider="gitlab" error={accountErrors.gitlab} onConnect={onChangeToken} />

@@ -9,6 +9,8 @@
     "allow-token-clear",
     "allow-token-link-gh",
     "allow-gh-status",
+    "allow-token-link-glab",
+    "allow-glab-status",
     "allow-github-graphql",
     "allow-gitlab-graphql",
     "allow-open-external",

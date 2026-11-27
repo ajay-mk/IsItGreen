@@ -1,12 +1,13 @@
 import { useState, type ReactNode } from 'react';
-import type { GhStatus } from '../lib/transport';
+import type { CliStatus } from '../lib/transport';
 import { ExternalLink } from './ExternalLink';
 
 /**
  * How to make the GitHub CLI login available to IsItGreen, step by step, for
- * when gh was not found where IsItGreen looks for it.
+ * when gh was not found where IsItGreen looks for it. Ends with a Check again
+ * button when `onRecheck` is given.
  */
-export function GhSetupSteps({ status, onRecheck }: { status: GhStatus; onRecheck: () => void }) {
+export function GhSetupSteps({ status, onRecheck }: { status: CliStatus; onRecheck?: (() => void) | undefined }) {
   const windows = status.searched.some((p) => p.includes('\\'));
   return (
     <ol className="help-list">
@@ -49,32 +50,37 @@ export function GhSetupSteps({ status, onRecheck }: { status: GhStatus; onRechec
           </>
         )}
       </li>
-      <li>
-        <button type="button" className="btn" onClick={onRecheck}>
-          Check again
-        </button>
-      </li>
+      {onRecheck && (
+        <li>
+          <button type="button" className="btn" onClick={onRecheck}>
+            Check again
+          </button>
+        </li>
+      )}
     </ol>
   );
 }
 
-/** A collapsed section with the steps, rendered only once opened. */
-export function GhSetupHelp({ summary, status, onRecheck, children }: {
-  summary: string;
-  status: GhStatus;
-  onRecheck: () => void;
-  children?: ReactNode;
-}) {
+/** A collapsed section whose content is rendered only once opened. */
+export function SetupDisclosure({ summary, children }: { summary: string; children: ReactNode }) {
   const [open, setOpen] = useState(false);
   return (
     <details className="gh-help" onToggle={(e) => setOpen(e.currentTarget.open)}>
       <summary>{summary}</summary>
-      {open && (
-        <>
-          {children}
-          <GhSetupSteps status={status} onRecheck={onRecheck} />
-        </>
-      )}
+      {open && children}
     </details>
+  );
+}
+
+/** A collapsed section with the GitHub CLI setup steps. */
+export function GhSetupHelp({ summary, status, onRecheck }: {
+  summary: string;
+  status: CliStatus;
+  onRecheck?: (() => void) | undefined;
+}) {
+  return (
+    <SetupDisclosure summary={summary}>
+      <GhSetupSteps status={status} onRecheck={onRecheck} />
+    </SetupDisclosure>
   );
 }

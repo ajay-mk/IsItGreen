@@ -11,15 +11,19 @@
 //! A GitHub slot can also be *linked to the GitHub CLI*: then no token is
 //! stored at all. The index records the login the link is pinned to, and the
 //! token is read from `gh` when needed and kept in memory only (`gh.rs`).
+//! The default GitLab slot can be linked to the GitLab CLI the same way: the
+//! index records the instance and login, and the token is read from `glab`
+//! (`glab.rs`).
 
 use std::collections::{hash_map, BTreeMap, BTreeSet, HashMap};
 use std::sync::Mutex;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, Result};
 use crate::gitlab::{is_valid_login, Host};
+use crate::glab::GlabToken;
 
 const SERVICE: &str = "io.github.ajay-mk.isitgreen";
 const MAX_TOKEN_LEN: usize = 255;
@@ -31,6 +35,9 @@ pub const MAX_OWNER_TOKENS: usize = 20;
 /// again. `gh auth logout` does not revoke the token, so this is what makes
 /// signing out of gh disconnect IsItGreen too.
 pub const GH_RECHECK: Duration = Duration::from_secs(60);
+/// A token read from the GitLab CLI that expires within this margin is not
+/// used again: glab is asked for a refreshed one instead.
+pub const GLAB_EXPIRY_MARGIN: Duration = Duration::from_secs(30);
 
 /// Providers that can hold a token. Kept as an allow-list so the frontend
 /// cannot create arbitrary keychain entries.
@@ -154,6 +161,10 @@ struct Index {
     /// recorded for them in `owners`.
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     gh_owners: BTreeSet<String>,
+    /// GitLab only: the default slot is linked to the GitLab CLI account
+    /// `default_login` on `host` instead of holding a stored token.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    default_glab: bool,
 }
 
 impl Index {
@@ -173,19 +184,34 @@ impl Index {
             })
             .take(MAX_OWNER_TOKENS)
             .collect();
+        let had_host = index.host.is_some();
+        let host = index
+            .host
+            .filter(|h| Host::parse(h).is_ok_and(|p| p.as_str() == h));
         Index {
-            default_gh: index.default_gh && default_login.is_some() && index.host.is_none(),
+            default_gh: index.default_gh && default_login.is_some() && !had_host,
             gh_owners: index
                 .gh_owners
                 .into_iter()
                 .filter(|owner| owners.contains_key(owner))
                 .collect(),
+            // A glab link is pinned to an instance, so unlike a gh link it
+            // needs the host.
+            default_glab: index.default_glab && default_login.is_some() && host.is_some(),
             default_login,
-            host: index
-                .host
-                .filter(|h| Host::parse(h).is_ok_and(|p| p.as_str() == h)),
+            host,
             owners,
         }
+    }
+
+    /// The instance and login the default slot is linked to through the
+    /// GitLab CLI, if it is.
+    fn glab_link(&self) -> Option<(Host, &str)> {
+        if !self.default_glab {
+            return None;
+        }
+        let host = Host::parse(self.host.as_deref()?).ok()?;
+        Some((host, self.default_login.as_deref()?))
     }
 
     /// The login a slot is linked to through the GitHub CLI, if it is.
@@ -203,6 +229,8 @@ impl Index {
     fn source(&self, slot: &Slot) -> Source {
         if self.gh_login(slot).is_some() {
             Source::GitHubCli
+        } else if *slot == Slot::Default && self.glab_link().is_some() {
+            Source::GitLabCli
         } else {
             Source::Token
         }
@@ -222,6 +250,9 @@ pub enum Source {
     /// Read from the GitHub CLI when needed, never stored.
     #[serde(rename = "gh")]
     GitHubCli,
+    /// Read from the GitLab CLI when needed, never stored.
+    #[serde(rename = "glab")]
+    GitLabCli,
 }
 
 /// What the frontend may learn about the stored tokens. Never the tokens.
@@ -254,12 +285,50 @@ pub enum Resolved {
     FromGh { slot: Slot, login: String },
 }
 
+/// The GitLab token picked for a request, with the instance it is sent to.
+pub enum ResolvedGitLab {
+    /// A stored token, or one read from the GitLab CLI earlier and checked.
+    Token {
+        slot: Slot,
+        token: String,
+        host: Host,
+    },
+    /// The default slot is linked to the GitLab CLI account `login` on
+    /// `host` and no fresh token is in memory: the caller must read it from
+    /// glab, check it belongs to `login`, and hand it to
+    /// [`TokenStore::remember_glab`].
+    FromGlab { host: Host, login: String },
+}
+
+/// A token read from the GitLab CLI, kept in memory only.
+struct GlabCached {
+    token: String,
+    /// When glab last gave this token.
+    checked_at: Instant,
+    /// When glab says the token expires (OAuth tokens only).
+    expires: Option<SystemTime>,
+}
+
+impl GlabCached {
+    /// Whether the token may be used without asking glab again.
+    fn fresh(&self) -> bool {
+        let lasts = self.expires.is_none_or(|at| {
+            at.duration_since(SystemTime::now())
+                .is_ok_and(|left| left > GLAB_EXPIRY_MARGIN)
+        });
+        self.checked_at.elapsed() < GH_RECHECK && lasts
+    }
+}
+
 #[derive(Default)]
 struct Inner {
     cache: HashMap<(Provider, Slot), String>,
     indexes: HashMap<Provider, Index>,
     /// When gh last confirmed the cached token of a linked slot.
     gh_checked: HashMap<(Provider, Slot), Instant>,
+    /// The token of the default GitLab slot when it is linked to glab. Kept
+    /// apart from `cache`, so it is never taken for a stored token.
+    glab: Option<GlabCached>,
 }
 
 impl Inner {
@@ -273,6 +342,20 @@ impl Inner {
             .get(&key)
             .is_some_and(|at| at.elapsed() < GH_RECHECK);
         Some((token, fresh))
+    }
+
+    /// The cached glab token and whether it is fresh, if the default GitLab
+    /// slot is still linked to `login` on `host`. The cache is only filled
+    /// for the current link and dropped whenever the link changes, so the
+    /// token was read for that same instance and account.
+    fn glab_cached(&mut self, host: &Host, login: &str) -> Option<(String, bool)> {
+        let linked = self
+            .index(Provider::GitLab)
+            .ok()?
+            .glab_link()
+            .is_some_and(|(h, l)| h == *host && l == login);
+        let cached = self.glab.as_ref()?;
+        linked.then(|| (cached.token.clone(), cached.fresh()))
     }
 }
 
@@ -456,9 +539,68 @@ impl TokenStore {
         Ok(())
     }
 
+    /// The GitLab CLI token already in memory, if the default GitLab slot is
+    /// still linked to `login` on `host`, and whether it is fresh: read within
+    /// [`GH_RECHECK`] and not about to expire.
+    pub fn cached_glab(&self, host: &Host, login: &str) -> Option<(String, bool)> {
+        self.lock().ok()?.glab_cached(host, login)
+    }
+
+    /// Keeps a token read from the GitLab CLI in memory once the caller has
+    /// checked it belongs to `login` on `host`, unless the slot was unlinked
+    /// or linked to another instance or account in the meantime.
+    pub fn remember_glab(&self, host: &Host, login: &str, token: &GlabToken) {
+        if let Ok(mut inner) = self.lock() {
+            let still_linked = inner.index(Provider::GitLab).is_ok_and(|index| {
+                index
+                    .glab_link()
+                    .is_some_and(|(h, l)| h == *host && l == login)
+            });
+            if still_linked {
+                inner.glab = Some(GlabCached {
+                    token: token.token.clone(),
+                    checked_at: Instant::now(),
+                    expires: token.expires,
+                });
+            }
+        }
+    }
+
+    /// Links the default GitLab slot to the GitLab CLI account `login` on
+    /// `host`, whose `token` the caller has just verified. Any stored default
+    /// GitLab token is deleted; from now on the token is only read from glab.
+    pub fn link_glab(&self, host: &Host, login: &str, token: &GlabToken) -> Result<()> {
+        if !is_valid_login(login) {
+            return Err(Error::InvalidOwner);
+        }
+        let provider = Provider::GitLab;
+        let mut inner = self.lock()?;
+        let previous = inner.index(provider)?.clone();
+        let index = inner.index(provider)?;
+        index.default_login = Some(login.to_owned());
+        index.host = Some(host.as_str().to_owned());
+        index.default_glab = true;
+        if let Err(err) = inner.save_index(provider) {
+            // Nothing was deleted yet, so the slot is exactly as it was.
+            *inner.index(provider)? = previous;
+            return Err(err);
+        }
+        inner.glab = Some(GlabCached {
+            token: token.token.clone(),
+            checked_at: Instant::now(),
+            expires: token.expires,
+        });
+        inner.cache.remove(&(provider, Slot::Default));
+        // As in link_gh: delete the stored token only once the link is saved.
+        delete_account(&Slot::Default.account(provider))?;
+        Ok(())
+    }
+
     pub fn summary(&self, provider: Provider) -> Result<TokenSummary> {
         let mut inner = self.lock()?;
-        let linked = inner.index(provider)?.gh_login(&Slot::Default).is_some();
+        let index = inner.index(provider)?;
+        let linked = index.gh_login(&Slot::Default).is_some()
+            || (provider == Provider::GitLab && index.glab_link().is_some());
         let stored = linked
             || match inner.get(provider, &Slot::Default) {
                 Ok(_) => true,
@@ -489,17 +631,36 @@ impl TokenStore {
 
     /// The default token together with the instance it was verified against,
     /// read under one lock so a concurrent `set` cannot pair a token with
-    /// another token's host. Blocking: call from a blocking-safe context.
-    pub fn resolve_with_host(&self, provider: Provider) -> Result<(Slot, String, Host)> {
+    /// another token's host. A slot linked to the GitLab CLI is served from
+    /// memory while its token is fresh; otherwise the caller is told to ask
+    /// glab. Blocking: call from a blocking-safe context.
+    pub fn resolve_with_host(&self, provider: Provider) -> Result<ResolvedGitLab> {
         let mut inner = self.lock()?;
-        let host = inner
-            .index(provider)?
+        let index = inner.index(provider)?;
+        if provider == Provider::GitLab {
+            if let Some((host, login)) = index.glab_link() {
+                let login = login.to_owned();
+                return Ok(match inner.glab_cached(&host, &login) {
+                    Some((token, true)) => ResolvedGitLab::Token {
+                        slot: Slot::Default,
+                        token,
+                        host,
+                    },
+                    _ => ResolvedGitLab::FromGlab { host, login },
+                });
+            }
+        }
+        let host = index
             .host
             .as_deref()
             .and_then(|h| Host::parse(h).ok())
             .ok_or(Error::NoToken)?;
         let token = inner.get(provider, &Slot::Default)?;
-        Ok((Slot::Default, token, host))
+        Ok(ResolvedGitLab::Token {
+            slot: Slot::Default,
+            token,
+            host,
+        })
     }
 
     /// The GitLab instance the default token was verified against.
@@ -541,6 +702,7 @@ impl TokenStore {
             let index = inner.index(provider)?;
             index.host = None;
             index.default_login = None;
+            index.default_glab = false;
             if let Err(err) = inner.save_index(provider) {
                 *inner.index(provider)? = previous;
                 return Err(err);
@@ -565,6 +727,7 @@ impl TokenStore {
                 index.default_login = Some(login.to_owned());
                 index.host = host.map(|h| h.as_str().to_owned());
                 index.default_gh = false;
+                index.default_glab = false;
             }
             Slot::Owner(owner) => {
                 index
@@ -574,6 +737,9 @@ impl TokenStore {
             }
         }
         let saved = inner.save_index(provider);
+        if provider == Provider::GitLab && matches!(slot, Slot::Default) {
+            inner.glab = None;
+        }
         if saved.is_err() && provider == Provider::GitLab && matches!(slot, Slot::Default) {
             // Keep memory in line with the stored index, and drop the token
             // so it is not left behind without the host it belongs to.
@@ -590,6 +756,9 @@ impl TokenStore {
         let mut inner = self.lock()?;
         inner.cache.remove(&(provider, slot.clone()));
         inner.gh_checked.remove(&(provider, slot.clone()));
+        if provider == Provider::GitLab && *slot == Slot::Default {
+            inner.glab = None;
+        }
         let account = slot.account(provider);
         delete_account(&account)?;
         let previous = inner.index(provider)?.clone();
@@ -599,6 +768,7 @@ impl TokenStore {
                 index.default_login = None;
                 index.host = None;
                 index.default_gh = false;
+                index.default_glab = false;
             }
             Slot::Owner(owner) => {
                 index.owners.remove(owner.as_str());
@@ -621,6 +791,9 @@ impl TokenStore {
         if let Ok(mut inner) = self.inner.lock() {
             inner.cache.remove(&(provider, slot.clone()));
             inner.gh_checked.remove(&(provider, slot.clone()));
+            if provider == Provider::GitLab && *slot == Slot::Default {
+                inner.glab = None;
+            }
         }
     }
 }
@@ -960,5 +1133,291 @@ mod tests {
             .collect();
         let raw = serde_json::json!({ "owners": owners }).to_string();
         assert_eq!(Index::decode(&raw).owners.len(), MAX_OWNER_TOKENS);
+    }
+
+    use crate::glab::GlabToken;
+    use std::time::SystemTime;
+
+    /// Keychain calls in these tests go to keyring's in-memory mock, never
+    /// to the real keychain. Mock entries keep nothing between calls, so a
+    /// test cannot read back what it wrote; it checks the store instead.
+    fn mock_keychain() {
+        static ONCE: std::sync::Once = std::sync::Once::new();
+        ONCE.call_once(|| {
+            keyring::set_default_credential_builder(keyring::mock::default_credential_builder())
+        });
+    }
+
+    const GL: Provider = Provider::GitLab;
+
+    fn h(s: &str) -> Host {
+        Host::parse(s).unwrap()
+    }
+
+    fn glab_token(token: &str, expires: Option<SystemTime>) -> GlabToken {
+        GlabToken {
+            token: token.into(),
+            expires,
+        }
+    }
+
+    /// The default GitLab slot linked to glab's account `login` on `host`,
+    /// with nothing in memory yet (as after a restart).
+    fn glab_store(host: &str, login: &str) -> TokenStore {
+        mock_keychain();
+        let store = TokenStore::default();
+        store.lock().unwrap().indexes.insert(
+            GL,
+            Index {
+                default_login: Some(login.into()),
+                host: Some(host.into()),
+                default_glab: true,
+                ..Index::default()
+            },
+        );
+        store
+    }
+
+    /// Makes glab's last confirmation of the cached token `by` older.
+    fn age_glab_check(store: &TokenStore, by: Duration) {
+        let mut inner = store.lock().unwrap();
+        let cached = inner.glab.as_mut().expect("a glab token is cached");
+        cached.checked_at -= by;
+    }
+
+    /// What `resolve_with_host` picks: `Ok((token, host))` for a token to
+    /// send, `Err((host, login))` when glab must be asked.
+    fn picked(store: &TokenStore) -> std::result::Result<(String, String), (String, String)> {
+        match store.resolve_with_host(GL).unwrap() {
+            ResolvedGitLab::Token { token, host, .. } => Ok((token, host.as_str().to_owned())),
+            ResolvedGitLab::FromGlab { host, login } => Err((host.as_str().to_owned(), login)),
+        }
+    }
+
+    fn ask_glab(
+        host: &str,
+        login: &str,
+    ) -> std::result::Result<(String, String), (String, String)> {
+        Err((host.to_owned(), login.to_owned()))
+    }
+
+    fn send(token: &str, host: &str) -> std::result::Result<(String, String), (String, String)> {
+        Ok((token.to_owned(), host.to_owned()))
+    }
+
+    #[test]
+    fn index_keeps_a_glab_link_with_its_instance() {
+        let raw = r#"{"default_login":"jane.doe","host":"gitlab.example.com:8443","owners":{},"default_glab":true}"#;
+        let index = Index::decode(raw);
+        assert!(index.default_glab);
+        assert_eq!(index.host.as_deref(), Some("gitlab.example.com:8443"));
+        assert_eq!(index.default_login.as_deref(), Some("jane.doe"));
+        assert_eq!(Index::decode(&index.encode()), index);
+        // A link is pinned to an account on an instance; without either it
+        // is dropped rather than guessed.
+        for raw in [
+            r#"{"host":"gitlab.example.com","default_glab":true}"#,
+            r#"{"default_login":"bad login","host":"gitlab.example.com","default_glab":true}"#,
+            r#"{"default_login":"jane.doe","default_glab":true}"#,
+            r#"{"default_login":"jane.doe","host":"http://gitlab.example.com","default_glab":true}"#,
+        ] {
+            assert!(!Index::decode(raw).default_glab, "{raw}");
+        }
+    }
+
+    #[test]
+    fn indexes_without_glab_links_load_and_encode_as_before() {
+        // Written by IsItGreen 0.3.1.
+        let gitlab = r#"{"default_login":"jane.doe","host":"gitlab.example.com","owners":{}}"#;
+        let index = Index::decode(gitlab);
+        assert!(!index.default_glab);
+        assert_eq!(index.host.as_deref(), Some("gitlab.example.com"));
+        assert_eq!(index.encode(), gitlab);
+        let github = r#"{"default_login":"octocat","owners":{"acme":"octocat"},"default_gh":true,"gh_owners":["acme"]}"#;
+        assert_eq!(Index::decode(github).encode(), github);
+    }
+
+    #[test]
+    fn a_glab_linked_slot_is_reported_and_served_by_glab() {
+        let store = glab_store("gitlab.example.com", "jane.doe");
+        let summary = store.summary(GL).unwrap();
+        assert!(summary.has_default);
+        assert_eq!(summary.default_source, Some(Source::GitLabCli));
+        assert_eq!(summary.default_login.as_deref(), Some("jane.doe"));
+        assert_eq!(summary.host.as_deref(), Some("gitlab.example.com"));
+        assert_eq!(
+            serde_json::to_value(summary.default_source).unwrap(),
+            "glab"
+        );
+        // Nothing in memory: the caller must ask glab, for the pinned
+        // account on the linked instance.
+        assert_eq!(picked(&store), ask_glab("gitlab.example.com", "jane.doe"));
+        store.remember_glab(
+            &h("gitlab.example.com"),
+            "jane.doe",
+            &glab_token("glpat-fresh0123456789ab", None),
+        );
+        assert_eq!(
+            picked(&store),
+            send("glpat-fresh0123456789ab", "gitlab.example.com")
+        );
+    }
+
+    #[test]
+    fn a_token_read_before_a_relink_is_never_used_after_it() {
+        // The read for (A, X) finishes after the link moved to another
+        // instance, another account, or both.
+        for (host, login) in [
+            ("gitlab.other.com", "jane.doe"),
+            ("gitlab.example.com", "john.roe"),
+            ("gitlab.other.com", "john.roe"),
+        ] {
+            let store = glab_store("gitlab.example.com", "jane.doe");
+            store
+                .link_glab(
+                    &h(host),
+                    login,
+                    &glab_token("glpat-relinked0123456789", None),
+                )
+                .unwrap();
+            store.forget_cached(GL, &Slot::Default);
+            store.remember_glab(
+                &h("gitlab.example.com"),
+                "jane.doe",
+                &glab_token("glpat-stale0123456789ab", None),
+            );
+            assert_eq!(picked(&store), ask_glab(host, login), "{host} {login}");
+            assert!(
+                store.cached_glab(&h(host), login).is_none(),
+                "{host} {login}"
+            );
+            assert!(store
+                .cached_glab(&h("gitlab.example.com"), "jane.doe")
+                .is_none());
+        }
+    }
+
+    #[test]
+    fn glab_tokens_are_rechecked_after_a_while_or_near_their_expiry() {
+        let store = glab_store("gitlab.example.com", "jane.doe");
+        let host = h("gitlab.example.com");
+        let now = SystemTime::now();
+        let cases = [
+            ("no expiry", None, true),
+            ("an hour left", Some(now + Duration::from_secs(3600)), true),
+            ("a minute left", Some(now + Duration::from_secs(60)), true),
+            (
+                "ten seconds left",
+                Some(now + Duration::from_secs(10)),
+                false,
+            ),
+            ("expired", Some(now - Duration::from_secs(10)), false),
+        ];
+        for (name, expires, fresh) in cases {
+            store.remember_glab(
+                &host,
+                "jane.doe",
+                &glab_token("glpat-expiring0123456789", expires),
+            );
+            let expected = if fresh {
+                send("glpat-expiring0123456789", "gitlab.example.com")
+            } else {
+                ask_glab("gitlab.example.com", "jane.doe")
+            };
+            assert_eq!(picked(&store), expected, "{name}");
+        }
+        // A token with no expiry still goes back to glab once the check is
+        // a minute old, so `glab auth logout` disconnects IsItGreen.
+        store.remember_glab(
+            &host,
+            "jane.doe",
+            &glab_token("glpat-checked0123456789", None),
+        );
+        age_glab_check(&store, GH_RECHECK + Duration::from_secs(1));
+        assert_eq!(picked(&store), ask_glab("gitlab.example.com", "jane.doe"));
+    }
+
+    #[test]
+    fn storing_a_token_ends_the_glab_link() {
+        let store = glab_store("gitlab.example.com", "jane.doe");
+        store.remember_glab(
+            &h("gitlab.example.com"),
+            "jane.doe",
+            &glab_token("glpat-fromglab0123456789", None),
+        );
+        store
+            .set(
+                GL,
+                &Slot::Default,
+                "glpat-pasted0123456789ab",
+                "jane.doe",
+                Some(&h("gitlab.other.com")),
+            )
+            .unwrap();
+        assert_eq!(
+            store.summary(GL).unwrap().default_source,
+            Some(Source::Token)
+        );
+        assert_eq!(
+            picked(&store),
+            send("glpat-pasted0123456789ab", "gitlab.other.com")
+        );
+        assert!(!store
+            .lock()
+            .unwrap()
+            .index(GL)
+            .unwrap()
+            .encode()
+            .contains("glab"));
+    }
+
+    #[test]
+    fn removing_the_connection_ends_the_glab_link() {
+        let store = glab_store("gitlab.example.com", "jane.doe");
+        store.remember_glab(
+            &h("gitlab.example.com"),
+            "jane.doe",
+            &glab_token("glpat-fromglab0123456789", None),
+        );
+        store.clear(GL, &Slot::Default).unwrap();
+        assert!(!store.summary(GL).unwrap().has_default);
+        assert!(matches!(store.resolve_with_host(GL), Err(Error::NoToken)));
+        assert!(store
+            .cached_glab(&h("gitlab.example.com"), "jane.doe")
+            .is_none());
+    }
+
+    #[test]
+    fn linking_glab_replaces_a_stored_token_and_its_instance() {
+        mock_keychain();
+        let store = TokenStore::default();
+        store
+            .set(
+                GL,
+                &Slot::Default,
+                "glpat-pasted0123456789ab",
+                "jane.doe",
+                Some(&h("gitlab.example.com")),
+            )
+            .unwrap();
+        store
+            .link_glab(
+                &h("gitlab.other.com:8443"),
+                "john.roe",
+                &glab_token("glpat-linked0123456789ab", None),
+            )
+            .unwrap();
+        let summary = store.summary(GL).unwrap();
+        assert_eq!(summary.default_source, Some(Source::GitLabCli));
+        assert_eq!(summary.host.as_deref(), Some("gitlab.other.com:8443"));
+        assert_eq!(summary.default_login.as_deref(), Some("john.roe"));
+        // The pasted token is never sent again, to either instance.
+        store.forget_cached(GL, &Slot::Default);
+        assert_eq!(
+            picked(&store),
+            ask_glab("gitlab.other.com:8443", "john.roe")
+        );
+        let saved = Index::decode(&store.lock().unwrap().index(GL).unwrap().encode());
+        assert!(saved.default_glab);
     }
 }

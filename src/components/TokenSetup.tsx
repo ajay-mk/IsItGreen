@@ -2,8 +2,9 @@ import { useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { providers } from '../providers';
 import { GITLAB_COM, normalizeGitLabHost } from '../providers/gitlab/host';
 import { PROVIDER_IDS, type ProviderId } from '../providers/types';
-import { useGhStatus } from '../hooks/useGhStatus';
+import { useGhStatus, useGlabStatus } from '../hooks/useGhStatus';
 import { GhSetupHelp } from './GhSetup';
+import { GlabSetupHelp } from './GlabSetup';
 import { tokens } from '../lib/transport';
 import logo from '../assets/logo.svg';
 import { ExternalLink } from './ExternalLink';
@@ -14,8 +15,8 @@ function GitHubHelp() {
   return (
     <>
       <p>
-        IsItGreen needs a personal access token. It is stored in your operating system&apos;s keychain
-        and only ever sent to <code>api.github.com</code>. The app itself never displays or exports it.
+        A personal access token is stored in your operating system&apos;s keychain and only ever sent to{' '}
+        <code>api.github.com</code>. The app itself never displays or exports it.
       </p>
       <ol className="help-list">
         <li>
@@ -57,9 +58,8 @@ function GitLabHelp({ host }: { host: string | null }) {
   return (
     <>
       <p>
-        IsItGreen needs a personal access token. It is stored in your operating system&apos;s keychain
-        and only ever sent to <code>{host ?? 'your GitLab instance'}</code>. The app itself never displays or
-        exports it.
+        A personal access token is stored in your operating system&apos;s keychain and only ever sent to{' '}
+        <code>{host ?? 'your GitLab instance'}</code>. The app itself never displays or exports it.
       </p>
       <ol className="help-list">
         <li>
@@ -90,8 +90,8 @@ function GitLabHelp({ host }: { host: string | null }) {
 }
 
 /**
- * Offers the GitHub CLI's login instead of a pasted token, when gh is
- * installed. Shown above the token steps on the GitHub tab.
+ * Offers the GitHub CLI's login, when gh is installed. Shown above the token
+ * steps on the GitHub tab.
  */
 function GitHubCliOption({ path, busy, onLink }: { path: string; busy: boolean; onLink: () => void }) {
   return (
@@ -106,7 +106,54 @@ function GitHubCliOption({ path, busy, onLink }: { path: string; busy: boolean; 
         Organization repositories work if the organization approved GitHub CLI, even where personal access tokens
         are blocked. A GitHub CLI token can also make changes; IsItGreen only ever sends read-only queries.
       </p>
-      <p className="setup-or">or paste a personal access token</p>
+    </div>
+  );
+}
+
+/**
+ * Offers the GitLab CLI's login for `host`, when glab is installed. Shown
+ * below the instance field on the GitLab tab.
+ */
+function GitLabCliOption({ path, host, busy, onLink }: {
+  path: string;
+  host: string;
+  busy: boolean;
+  onLink: () => void;
+}) {
+  return (
+    <div className="gh-option">
+      <button type="button" className="btn btn-primary" disabled={busy} onClick={onLink}>
+        {busy ? 'Connecting…' : 'Use GitLab CLI login'}
+      </button>
+      <p className="hint">
+        Uses the account GitLab CLI is signed in to on this instance (<code className="url-text">{path}</code>); sign
+        in first with <code>glab auth login --hostname {host}</code> if you have not. IsItGreen keeps no copy of the
+        token; it asks glab for it when needed, so <code>glab auth logout</code> disconnects IsItGreen too, within a
+        minute. A GitLab CLI token can also make changes; IsItGreen only ever sends read-only queries.
+      </p>
+    </div>
+  );
+}
+
+/**
+ * Shown in place of the CLI login button when the CLI was not found: what it
+ * offers, the setup steps (`help`, collapsed) and a way to check again.
+ */
+function CliMissing({ name, onRecheck, children, help }: {
+  name: string;
+  onRecheck: () => void;
+  children: ReactNode;
+  help: ReactNode;
+}) {
+  return (
+    <div className="gh-option">
+      <p className="hint">
+        <strong>{name} not found</strong>. {children}
+      </p>
+      {help}
+      <button type="button" className="btn" onClick={onRecheck}>
+        Check again
+      </button>
     </div>
   );
 }
@@ -137,21 +184,34 @@ export function TokenSetup({ provider: initial = 'github', gitlabHost, onDone, o
   const provider = providers[providerId];
   const host = normalizeGitLabHost(hostInput);
   const gh = useGhStatus();
-  const ghPath = gh.status?.path;
+  const glab = useGlabStatus();
+  // Known once the CLI check for this tab has answered.
+  const cliChecked = !!(providerId === 'github' ? gh.status : glab.status);
+  // Shown in glab commands while the instance field holds no valid host.
+  const hostLabel = host ?? '<host>';
 
-  async function linkGh() {
+  /** Links the default slot of `id` to its CLI login through `call`. */
+  async function link(call: () => Promise<string>, id: ProviderId, fallback: string) {
     setBusy(true);
     setError(null);
     try {
-      const login = await tokens.linkGh();
+      const login = await call();
       if (input.current) input.current.value = '';
       setHasValue(false);
-      onDone(login, 'github');
+      onDone(login, id);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not use the GitHub CLI login');
+      setError(err instanceof Error ? err.message : fallback);
     } finally {
       setBusy(false);
     }
+  }
+
+  function linkGlab() {
+    if (!host) {
+      setError('Enter the address of your GitLab instance, such as gitlab.com or gitlab.example.com.');
+      return;
+    }
+    void link(() => tokens.linkGlab(host), 'gitlab', 'Could not use the GitLab CLI login');
   }
 
   async function submit(e: FormEvent) {
@@ -205,16 +265,6 @@ export function TokenSetup({ provider: initial = 'github', gitlabHost, onDone, o
           ))}
         </div>
         {reason && <p className="error-text">{reason}</p>}
-        {providerId === 'github' && ghPath && <GitHubCliOption path={ghPath} busy={busy} onLink={() => void linkGh()} />}
-        {providerId === 'github' ? <GitHubHelp /> : <GitLabHelp host={host} />}
-        {providerId === 'github' && gh.status && !gh.status.path && (
-          <GhSetupHelp summary="Use your GitHub CLI login instead" status={gh.status} onRecheck={gh.recheck}>
-            <p className="hint">
-              Helps when your organization blocks personal access tokens but has approved GitHub CLI. IsItGreen keeps
-              no copy of the token, and only ever sends read-only queries.
-            </p>
-          </GhSetupHelp>
-        )}
         {providerId === 'gitlab' && (
           <label className="field">
             <span>GitLab instance</span>
@@ -230,6 +280,34 @@ export function TokenSetup({ provider: initial = 'github', gitlabHost, onDone, o
             />
           </label>
         )}
+        {providerId === 'github' && gh.status?.path && (
+          <GitHubCliOption path={gh.status.path} busy={busy} onLink={() => void link(() => tokens.linkGh(), 'github', 'Could not use the GitHub CLI login')} />
+        )}
+        {providerId === 'github' && gh.status && !gh.status.path && (
+          <CliMissing
+            name="GitHub CLI"
+            onRecheck={gh.recheck}
+            help={<GhSetupHelp summary="How to set up GitHub CLI" status={gh.status} />}
+          >
+            Its login works even where your organization blocks personal access tokens but has approved GitHub CLI.
+            IsItGreen keeps no copy of the token, and only ever sends read-only queries.
+          </CliMissing>
+        )}
+        {providerId === 'gitlab' && glab.status?.path && (
+          <GitLabCliOption path={glab.status.path} host={hostLabel} busy={busy} onLink={linkGlab} />
+        )}
+        {providerId === 'gitlab' && glab.status && !glab.status.path && (
+          <CliMissing
+            name="GitLab CLI"
+            onRecheck={glab.recheck}
+            help={<GlabSetupHelp summary="How to set up GitLab CLI" status={glab.status} host={hostLabel} />}
+          >
+            Its login saves creating a token by hand. IsItGreen keeps no copy of the token, and only ever sends
+            read-only queries.
+          </CliMissing>
+        )}
+        {cliChecked && <p className="setup-or">or paste a personal access token</p>}
+        {providerId === 'github' ? <GitHubHelp /> : <GitLabHelp host={host} />}
         <label className="field">
           <span>Access token</span>
           <input

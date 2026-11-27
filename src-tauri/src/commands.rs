@@ -10,8 +10,10 @@ use crate::error::{Error, Result};
 use crate::github::GitHubClient;
 use crate::gitlab::{GitLabClient, Host, GITLAB_COM};
 use crate::images::ImageClient;
-use crate::token::{validate_format, Owner, Provider, Resolved, Slot, TokenStore, TokenSummary};
-use crate::{gh, github_queries, gitlab_queries, graphql_guard};
+use crate::token::{
+    validate_format, Owner, Provider, Resolved, ResolvedGitLab, Slot, TokenStore, TokenSummary,
+};
+use crate::{gh, github_queries, gitlab_queries, glab, graphql_guard};
 use std::sync::Arc;
 
 pub struct AppState {
@@ -22,6 +24,8 @@ pub struct AppState {
     /// Held while a token is read from the GitHub CLI, so requests that
     /// arrive together (as they do at startup) run gh once, not each.
     pub gh_read: async_runtime::Mutex<()>,
+    /// The same for the GitLab CLI.
+    pub glab_read: async_runtime::Mutex<()>,
 }
 
 /// Runs a blocking keychain operation off the async runtime's worker threads.
@@ -174,22 +178,35 @@ async fn read_gh(state: &State<'_, AppState>, slot: &Slot, login: String) -> Res
     Ok(token)
 }
 
-/// Whether the GitHub CLI is installed where IsItGreen looks for it, and where.
+/// Whether a CLI (gh or glab) is installed where IsItGreen looks for it, and
+/// where.
 #[derive(serde::Serialize)]
-pub struct GhStatus {
+pub struct CliStatus {
     path: Option<String>,
     /// Every place IsItGreen looks, for the setup instructions.
     searched: Vec<String>,
 }
 
 #[tauri::command]
-pub async fn gh_status() -> Result<GhStatus> {
+pub async fn gh_status() -> Result<CliStatus> {
     let path = async_runtime::spawn_blocking(gh::locate)
         .await
         .map_err(|_| Error::Internal)?;
-    Ok(GhStatus {
+    Ok(CliStatus {
         path: path.map(|p| p.display().to_string()),
         searched: gh::searched(),
+    })
+}
+
+/// Whether the GitLab CLI is installed where IsItGreen looks for it, and where.
+#[tauri::command]
+pub async fn glab_status() -> Result<CliStatus> {
+    let path = async_runtime::spawn_blocking(glab::locate)
+        .await
+        .map_err(|_| Error::Internal)?;
+    Ok(CliStatus {
+        path: path.map(|p| p.display().to_string()),
+        searched: glab::searched(),
     })
 }
 
@@ -221,9 +238,28 @@ pub async fn token_link_gh(state: State<'_, AppState>, owner: Option<String>) ->
     Ok(login)
 }
 
+/// Links the default GitLab slot to the account the GitLab CLI is signed in to
+/// on `host` (gitlab.com when left out). IsItGreen keeps no copy of the
+/// token: it is read from glab when needed. Returns the login the link is
+/// pinned to.
+#[tauri::command]
+pub async fn token_link_glab(state: State<'_, AppState>, host: Option<String>) -> Result<String> {
+    let host = Host::parse(host.as_deref().unwrap_or(GITLAB_COM))?;
+    let _one_at_a_time = state.glab_read.lock().await;
+    let asked = host.clone();
+    let token = async_runtime::spawn_blocking(move || glab::token(&asked))
+        .await
+        .map_err(|_| Error::Internal)??;
+    let login = state.gitlab.viewer_login(&host, &token.token).await?;
+    let pinned = login.clone();
+    blocking(&state.tokens, move |t| t.link_glab(&host, &pinned, &token)).await?;
+    Ok(login)
+}
+
 /// Runs one of IsItGreen's own read-only GitLab queries (`gitlab_queries.rs`),
-/// named by `operation`, against the GitLab instance the stored token belongs
-/// to. The frontend never sends query text and cannot choose the host.
+/// named by `operation`, against the GitLab instance the default token belongs
+/// to: the stored one, or the one read from the GitLab CLI for a linked slot.
+/// The frontend never sends query text and cannot choose the host.
 #[tauri::command]
 pub async fn gitlab_graphql(
     state: State<'_, AppState>,
@@ -236,8 +272,14 @@ pub async fn gitlab_graphql(
     let (query, variables) = gitlab_queries::resolve(&operation, variables)?;
     // Defence in depth: the documents are ours, but check them anyway.
     graphql_guard::ensure_read_only(&query)?;
-    let (slot, token, host) =
-        blocking(&state.tokens, |t| t.resolve_with_host(Provider::GitLab)).await?;
+    let resolved = blocking(&state.tokens, |t| t.resolve_with_host(Provider::GitLab)).await?;
+    let (slot, token, host) = match resolved {
+        ResolvedGitLab::Token { slot, token, host } => (slot, token, host),
+        ResolvedGitLab::FromGlab { host, login } => {
+            let token = read_glab(&state, &host, login).await?;
+            (Slot::Default, token, host)
+        }
+    };
     let result = state
         .gitlab
         .graphql(&host, &token, &query, &variables)
@@ -246,6 +288,41 @@ pub async fn gitlab_graphql(
         state.tokens.forget_cached(Provider::GitLab, &slot);
     }
     result
+}
+
+/// Reads the token for the default GitLab slot, linked to the GitLab CLI
+/// account `login` on `host`. As in [`read_gh`], a token glab has not given
+/// before is used only once GitLab confirms it belongs to that account.
+async fn read_glab(state: &State<'_, AppState>, host: &Host, login: String) -> Result<String> {
+    let _one_at_a_time = state.glab_read.lock().await;
+    // Whoever held the lock before may have just read it.
+    let cached = state.tokens.cached_glab(host, &login);
+    if let Some((token, true)) = &cached {
+        return Ok(token.clone());
+    }
+    let asked = host.clone();
+    let read = async_runtime::spawn_blocking(move || glab::token(&asked))
+        .await
+        .map_err(|_| Error::Internal)?;
+    let token = match read {
+        Ok(token) => token,
+        Err(err) => {
+            // Signed out of glab (or glab is gone): stop using the old token.
+            state.tokens.forget_cached(Provider::GitLab, &Slot::Default);
+            return Err(err);
+        }
+    };
+    // The same token glab gave before was already checked with GitLab. An
+    // OAuth refresh gives a new one, which is checked again.
+    let known = cached.is_some_and(|(old, _)| old == token.token);
+    if !known {
+        let owner = state.gitlab.viewer_login(host, &token.token).await?;
+        if !owner.eq_ignore_ascii_case(&login) {
+            return Err(Error::GlabAccountMismatch);
+        }
+    }
+    state.tokens.remember_glab(host, &login, &token);
+    Ok(token.token)
 }
 
 /// Fetches an image from a pull request or issue description, from GitHub's

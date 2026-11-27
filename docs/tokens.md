@@ -181,7 +181,7 @@ on that instance:
   refresh token in its own config.
 - **Sign-out and revocation.** IsItGreen asks glab again at least once a
   minute, and sooner when glab reports that the token is about to expire. If
-  you sign out of glab (`glab auth logout`), IsItGreen disconnects within a
+  you sign out of glab (`glab auth logout --hostname <your instance>`), IsItGreen disconnects within a
   minute. This holds even when a token was set for glab without an instance
   (`glab config set token --global`): IsItGreen refuses such a token, so it
   never links to one. A token revoked on GitLab is a different case. glab
@@ -210,10 +210,13 @@ on that instance:
   refresh token) gives "Could not get a token from GitLab CLI". Run `glab
   auth login --hostname <your instance>` again.
 - **Some glab setups cannot be linked.** If glab's entry for your instance
-  uses `api_host`, or the instance is installed under a subfolder, glab
-  reports the API host or the path as the instance. IsItGreen refuses that
-  and shows "Could not get a token from GitLab CLI". Use a personal access
-  token instead.
+  uses `api_host`, glab reports the API host as the instance. IsItGreen
+  refuses that and shows "Could not get a token from GitLab CLI". Use a
+  personal access token instead, and enter the instance's own address.
+- **Subfolder installs are not supported.** IsItGreen accepts only an
+  instance address without a path, such as `gitlab.example.com`, so a GitLab
+  served under a subfolder (`example.com/gitlab`) can't be connected with
+  GitLab CLI or with a token.
 - **Where glab must be installed.** IsItGreen only runs glab from its usual
   install locations, never from `PATH`; see
   [Setting up GitLab CLI](#setting-up-gitlab-cli).

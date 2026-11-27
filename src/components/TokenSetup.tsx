@@ -128,7 +128,7 @@ function GitLabCliOption({ path, host, busy, onLink }: {
       <p className="hint">
         Uses the account GitLab CLI is signed in to on this instance (<code className="url-text">{path}</code>); sign
         in first with <code>glab auth login --hostname {host}</code> if you have not. IsItGreen keeps no copy of the
-        token; it asks glab for it when needed, so <code>glab auth logout</code> disconnects IsItGreen too, within a
+        token; it asks glab for it when needed, so <code>glab auth logout --hostname {host}</code> disconnects IsItGreen too, within a
         minute. A GitLab CLI token can also make changes; IsItGreen only ever sends read-only queries.
       </p>
     </div>

@@ -70,6 +70,8 @@ fn candidates() -> Vec<PathBuf> {
             paths.push(pf.join("glab").join("glab.exe"));
         }
         if let Some(local) = var("LOCALAPPDATA") {
+            // The installer's per-user choice.
+            paths.push(local.join("Programs").join("glab").join("glab.exe"));
             paths.push(
                 local
                     .join("Microsoft")

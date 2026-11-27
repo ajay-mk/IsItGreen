@@ -1,3 +1,4 @@
+mod cli;
 mod commands;
 mod error;
 mod gh;

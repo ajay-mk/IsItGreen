@@ -1,31 +1,24 @@
 //! Reads the GitHub CLI's token by running `gh auth token`.
 //!
-//! This is the only place the backend starts another program, so it is kept
-//! narrow:
+//! The rules for starting `gh` are in `cli.rs`. Here:
 //!
-//! - `gh` is only looked for in a fixed list of install locations (never on
-//!   `PATH`, never at a path the frontend names), and a binary in a directory
-//!   anyone can write to is refused.
+//! - `gh` is only looked for in a fixed list of install locations.
 //! - The arguments are fixed; the only variable part is a login that has
-//!   passed [`is_valid_login`]. No shell is involved.
-//! - The child gets a minimal environment, so `GH_TOKEN`, `GITHUB_TOKEN`,
-//!   `GH_CONFIG_DIR` and friends cannot change which token comes back.
-//! - It has no stdin, a time limit and a cap on what it may print. Its error
-//!   output is only matched against known phrases, never shown, since it
-//!   could in theory contain a token.
+//!   passed [`is_valid_login`].
+//! - `GH_TOKEN`, `GITHUB_TOKEN`, `GH_CONFIG_DIR` and friends never reach
+//!   `gh`, so they cannot change which token comes back.
 //!
 //! IsItGreen never stores the token it gets this way; see `token.rs`.
 
-use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
-use std::time::{Duration, Instant};
+use std::process::Command;
+use std::time::Duration;
 
+use crate::cli::is_trusted;
 use crate::error::{Error, Result};
 use crate::gitlab::is_valid_login;
 
 const TIMEOUT: Duration = Duration::from_secs(10);
-const MAX_OUTPUT: u64 = 4096;
 
 /// Where the GitHub CLI's installers put it, in the order they are tried.
 fn candidates() -> Vec<PathBuf> {
@@ -88,29 +81,6 @@ pub fn searched() -> Vec<String> {
         .collect()
 }
 
-/// A file or directory others may write to could have been swapped for
-/// something else, so neither the binary nor its directory may be writable
-/// by everyone. Symlinks (Homebrew links into its Cellar) are checked at
-/// both ends.
-#[cfg(unix)]
-fn is_trusted(path: &Path) -> bool {
-    use std::os::unix::fs::PermissionsExt;
-    let world_writable =
-        |p: &Path| std::fs::metadata(p).map_or(true, |m| m.permissions().mode() & 0o002 != 0);
-    let Ok(real) = std::fs::canonicalize(path) else {
-        return false;
-    };
-    let mut checked = vec![path.to_path_buf(), real.clone()];
-    checked.extend(path.parent().map(Path::to_path_buf));
-    checked.extend(real.parent().map(Path::to_path_buf));
-    real.is_file() && !checked.iter().any(|p| world_writable(p))
-}
-
-#[cfg(not(unix))]
-fn is_trusted(path: &Path) -> bool {
-    path.is_file()
-}
-
 /// The GitHub CLI binary IsItGreen would run, if one is installed in a known
 /// place.
 pub fn locate() -> Option<PathBuf> {
@@ -119,61 +89,21 @@ pub fn locate() -> Option<PathBuf> {
         .find(|p| p.is_file() && is_trusted(p))
 }
 
-/// Variables `gh` needs to find its config and the OS keychain. Everything
-/// else, including any `GH_*` or `GITHUB_*` setting, is dropped.
-const PASSED_ENV: &[&str] = &[
-    "HOME",
-    "USER",
-    "LOGNAME",
-    "TMPDIR",
-    "XDG_CONFIG_HOME",
-    "XDG_DATA_HOME",
-    "XDG_STATE_HOME",
-    "XDG_RUNTIME_DIR",
-    "DBUS_SESSION_BUS_ADDRESS",
-    "SystemRoot",
-    "windir",
-    "USERPROFILE",
-    "APPDATA",
-    "LOCALAPPDATA",
-    "HOMEDRIVE",
-    "HOMEPATH",
-    "TEMP",
-    "TMP",
-];
-
 fn command(gh: &Path, login: Option<&str>) -> Command {
-    let mut cmd = Command::new(gh);
-    cmd.args(["auth", "token", "--hostname", "github.com"]);
+    let mut args = vec!["auth", "token", "--hostname", "github.com"];
     if let Some(login) = login {
-        cmd.args(["--user", login]);
+        args.extend(["--user", login]);
     }
-    cmd.env_clear();
-    // A fixed search path for anything gh itself runs (macOS's `security`).
-    if cfg!(unix) {
-        cmd.env("PATH", "/usr/bin:/bin:/usr/sbin:/sbin");
-    }
-    for name in PASSED_ENV {
-        if let Some(value) = std::env::var_os(name) {
-            cmd.env(name, value);
-        }
-    }
-    cmd.envs([
-        ("GH_PROMPT_DISABLED", "1"),
-        ("GH_NO_UPDATE_NOTIFIER", "1"),
-        ("NO_COLOR", "1"),
-    ]);
-    cmd.stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    // A console program started from a GUI app would flash a console window.
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        cmd.creation_flags(CREATE_NO_WINDOW);
-    }
-    cmd
+    crate::cli::base_command(
+        gh,
+        &args,
+        &[
+            ("GH_PROMPT_DISABLED", "1"),
+            ("GH_NO_UPDATE_NOTIFIER", "1"),
+            ("NO_COLOR", "1"),
+        ],
+        None,
+    )
 }
 
 /// Why `gh` exited without a token, from its error output. Only known
@@ -201,57 +131,12 @@ pub fn token(login: Option<&str>) -> Result<String> {
     run(command(&gh, login))
 }
 
-fn run(mut cmd: Command) -> Result<String> {
-    let mut child = cmd.spawn().map_err(|_| Error::GhFailed)?;
-    let (Some(stdout), Some(stderr)) = (child.stdout.take(), child.stderr.take()) else {
-        let _ = child.kill();
-        return Err(Error::GhFailed);
-    };
-    // Read both pipes while waiting, so a chatty child cannot block on a full
-    // pipe; anything past the cap is ignored. The results come back over a
-    // channel, so a helper process that keeps a pipe open after gh exits
-    // cannot hold us past the time limit.
-    let read = |pipe: Box<dyn Read + Send>| {
-        let (tx, rx) = std::sync::mpsc::channel();
-        std::thread::spawn(move || {
-            let mut buf = Vec::new();
-            let _ = pipe.take(MAX_OUTPUT + 1).read_to_end(&mut buf);
-            let _ = tx.send(buf);
-        });
-        rx
-    };
-    let out = read(Box::new(stdout));
-    let err = read(Box::new(stderr));
-
-    let start = Instant::now();
-    let status = loop {
-        match child.try_wait() {
-            Ok(Some(status)) => break status,
-            Ok(None) if start.elapsed() < TIMEOUT => {
-                std::thread::sleep(Duration::from_millis(25));
-            }
-            _ => {
-                let _ = child.kill();
-                let _ = child.wait();
-                return Err(Error::GhFailed);
-            }
-        }
-    };
-    let collect = |rx: std::sync::mpsc::Receiver<Vec<u8>>| {
-        let left = TIMEOUT
-            .saturating_sub(start.elapsed())
-            .max(Duration::from_millis(500));
-        rx.recv_timeout(left).map_err(|_| Error::GhFailed)
-    };
-    let out = collect(out)?;
-    let err = collect(err)?;
-    if out.len() as u64 > MAX_OUTPUT {
-        return Err(Error::GhFailed);
+fn run(cmd: Command) -> Result<String> {
+    let out = crate::cli::run(cmd, TIMEOUT).map_err(|_| Error::GhFailed)?;
+    if !out.status_ok {
+        return Err(failure(&String::from_utf8_lossy(&out.stderr)));
     }
-    if !status.success() {
-        return Err(failure(&String::from_utf8_lossy(&err)));
-    }
-    let token = String::from_utf8(out).map_err(|_| Error::GhFailed)?;
+    let token = String::from_utf8(out.stdout).map_err(|_| Error::GhFailed)?;
     let token = token.trim();
     crate::token::validate_format(crate::token::Provider::GitHub, token)
         .map_err(|_| Error::GhFailed)?;
@@ -263,25 +148,12 @@ mod tests {
     use super::*;
     use std::os::unix::fs::PermissionsExt;
 
-    /// Writing an executable while another test thread forks can make the
-    /// exec fail with "text file busy", so these tests run one at a time.
-    static SERIAL: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
-    fn serial() -> std::sync::MutexGuard<'static, ()> {
-        SERIAL.lock().unwrap_or_else(|e| e.into_inner())
-    }
+    use crate::cli::test_support::serial;
+    use std::time::Instant;
 
     /// A stand-in for `gh`: a shell script in a fresh private directory.
     fn fake_gh(name: &str, body: &str) -> PathBuf {
-        let dir =
-            std::env::temp_dir().join(format!("isitgreen-gh-test-{}-{name}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir(&dir).unwrap();
-        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700)).unwrap();
-        let path = dir.join("gh");
-        std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).unwrap();
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700)).unwrap();
-        path
+        crate::cli::test_support::fake_bin("gh", "gh", name, body)
     }
 
     const TOKEN: &str = "gho_0123456789abcdefghijABCDEFGHIJ0123";

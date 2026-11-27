@@ -9,6 +9,8 @@ fn main() {
             "token_clear",
             "token_link_gh",
             "gh_status",
+            "token_link_glab",
+            "glab_status",
             "github_graphql",
             "gitlab_graphql",
             "open_external",

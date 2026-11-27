@@ -15,13 +15,14 @@ import {
 import {
   ASSIGNED_ISSUES_QUERY,
   BRANCH_PIPELINE_QUERY,
-  buildProjectsQuery,
+  buildProjectsRequest,
   DETAILS_LIST_FETCHED,
   DETAILS_QUERY,
   INBOX_QUERY,
   PIPELINES_FETCHED,
   PROJECT_SUGGESTIONS_FETCHED,
   projectAlias,
+  PROJECT_LIST_QUERY,
   PROJECTS_PER_REQUEST,
   PROJECTS_QUERY,
   VIEWER_ALIAS,
@@ -81,8 +82,7 @@ export const gitlab: Provider = {
     // they run side by side.
     await Promise.all(
       chunk(repos, PROJECTS_PER_REQUEST).map(async (batch) => {
-        const { query, variables } = buildProjectsQuery(batch);
-        const res = await gitlabGraphql<Record<string, unknown>>(query, variables);
+        const res = await gitlabGraphql<Record<string, unknown>>(PROJECTS_QUERY, buildProjectsRequest(batch));
         const data = dataOrThrow(res, 'your projects');
         requireViewer(data[VIEWER_ALIAS], res.errors);
         batch.forEach((repo, i) => {
@@ -140,7 +140,7 @@ export const gitlab: Provider = {
   },
 
   async listRepos() {
-    const res = await gitlabGraphql<Record<string, unknown>>(PROJECTS_QUERY, { n: PROJECT_SUGGESTIONS_FETCHED });
+    const res = await gitlabGraphql<Record<string, unknown>>(PROJECT_LIST_QUERY, { n: PROJECT_SUGGESTIONS_FETCHED });
     const data = dataOrThrow(res, 'your projects');
     requireViewer(data[VIEWER_ALIAS], res.errors);
     const projects = data.projects;

@@ -481,6 +481,22 @@ describe('SettingsPanel', () => {
     });
   });
 
+  describe('GitLab CLI', () => {
+    const GLAB_LINKED: TokenSummary = { ...BOTH.gitlab!, defaultSource: 'glab' };
+
+    it('shows where the GitLab token comes from and how to unlink it', async () => {
+      setGitLabHost('gitlab.example.com');
+      const { onSignOut, onChangeToken } = setup({}, { ...BOTH, gitlab: GLAB_LINKED });
+      expect(screen.getByText(/from GitLab CLI/)).toBeTruthy();
+      expect(screen.getByText('gitlab.example.com')).toBeTruthy();
+      expect(screen.queryByRole('button', { name: 'Remove GitLab token' })).toBeNull();
+      await userEvent.click(screen.getByRole('button', { name: 'Unlink GitLab CLI' }));
+      expect(onSignOut).toHaveBeenCalledExactlyOnceWith('gitlab');
+      await userEvent.click(screen.getByRole('button', { name: 'Change GitLab connection' }));
+      expect(onChangeToken).toHaveBeenCalledExactlyOnceWith('gitlab');
+    });
+  });
+
   describe('backup', () => {
     const textarea = () => screen.getByRole('textbox', { name: 'Configuration JSON' }) as HTMLTextAreaElement;
 

@@ -4,7 +4,7 @@ use serde::Serialize;
 ///
 /// Messages are written by us and never include the access token or raw
 /// response bodies, so they are safe to display.
-#[derive(Debug, thiserror::Error)]
+#[derive(Clone, Debug, thiserror::Error)]
 pub enum Error {
     #[error("No access token configured")]
     NoToken,
@@ -50,6 +50,18 @@ pub enum Error {
         "GitHub CLI returned a token for a different account; link GitHub CLI again in Settings"
     )]
     GhAccountMismatch,
+    #[error("GitLab CLI (glab) was not found. Install it and sign in with `glab auth login`")]
+    GlabNotFound,
+    #[error("GitLab CLI is not signed in to this GitLab instance. Run `glab auth login` in a terminal, then try again")]
+    GlabNotLoggedIn,
+    #[error("GitLab CLI is too old; update it to version 1.85 or newer")]
+    GlabOutdated,
+    #[error("Could not get a token from GitLab CLI")]
+    GlabFailed,
+    #[error(
+        "GitLab CLI returned a token for a different account; link GitLab CLI again in Settings"
+    )]
+    GlabAccountMismatch,
     #[error("Internal error")]
     Internal,
 }
@@ -78,6 +90,11 @@ impl Error {
             Error::GhOutdated => "gh_outdated",
             Error::GhFailed => "gh_failed",
             Error::GhAccountMismatch => "gh_account_mismatch",
+            Error::GlabNotFound => "glab_not_found",
+            Error::GlabNotLoggedIn => "glab_not_logged_in",
+            Error::GlabOutdated => "glab_outdated",
+            Error::GlabFailed => "glab_failed",
+            Error::GlabAccountMismatch => "glab_account_mismatch",
             Error::Internal => "internal",
         }
     }

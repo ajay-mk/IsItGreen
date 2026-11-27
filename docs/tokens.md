@@ -1,44 +1,12 @@
 # Access tokens
 
-IsItGreen reads GitHub and GitLab with personal access tokens that you create,
-or for GitHub with your [GitHub CLI](#github-cli) login. Tokens are stored in
-your operating system's keychain and never shown again after you save them. All requests are read-only; see
+IsItGreen reads GitHub and GitLab with the login of [GitHub CLI](#github-cli)
+or [GitLab CLI](#gitlab-cli), or with personal access tokens that you create.
+The setup screen lists the CLI login first and the token form below it. Tokens
+are stored in your operating system's keychain and never shown again after you
+save them. All requests are read-only; see
 [SECURITY.md](../SECURITY.md). You can connect either service or both; the
 rest of this page covers GitHub first, then [GitLab](#gitlab).
-
-## Fine-grained token (recommended)
-
-A fine-grained token needs *read-only* access to: Metadata, Contents, Pull requests, Issues, Commit statuses and
-Actions. [This link](https://github.com/settings/personal-access-tokens/new?name=IsItGreen&description=Read-only+access+for+the+IsItGreen+dashboard&metadata=read&contents=read&pull_requests=read&issues=read&statuses=read&actions=read)
-opens GitHub's token form with those permissions filled in; the setup screen
-links to it too. You still choose *Repository access* yourself (*All
-repositories* or a selection), because GitHub cannot fill that in from a link.
-Repository access alone grants no permissions, so a token with *All
-repositories* but no permissions cannot read anything. A fine-grained token is
-limited to one account or organization.
-
-## Classic token
-
-Works across organizations. Public repositories need no scopes; private repositories need `repo`, which also grants write access.
-IsItGreen only sends read-only queries, but prefer fine-grained tokens where
-possible.
-
-## Organizations with SAML SSO
-
-A classic token must be authorized for each organization that enforces SSO: on <https://github.com/settings/tokens>, choose
-*Configure SSO* next to the token and authorize the organization. You can do
-this yourself; no admin is needed. An OAuth token (`gho_`, for example from
-`gh auth token`) does not appear on that page: sign in through the
-organization's SSO and authorize the app again instead. Until then, the
-organization's repositories show an SSO error and the "Needs you" list notes
-that some results are hidden.
-
-## Organization token policies
-
-An organization can require owner approval for fine-grained tokens, or forbid classic or long-lived tokens. While a
-fine-grained token is pending approval, or when a repository was not selected
-for it, GitHub reports the repository as not found. If the organization has
-approved GitHub CLI, its login usually still works; see below.
 
 ## GitHub CLI
 
@@ -108,6 +76,40 @@ If IsItGreen then says GitHub CLI is not signed in, run `gh auth login` again
 (or `gh auth status` to see which accounts gh knows). Once fixed in gh, the
 next refresh works without linking again.
 
+## Fine-grained token (recommended token)
+
+A fine-grained token needs *read-only* access to: Metadata, Contents, Pull requests, Issues, Commit statuses and
+Actions. [This link](https://github.com/settings/personal-access-tokens/new?name=IsItGreen&description=Read-only+access+for+the+IsItGreen+dashboard&metadata=read&contents=read&pull_requests=read&issues=read&statuses=read&actions=read)
+opens GitHub's token form with those permissions filled in; the setup screen
+links to it too. You still choose *Repository access* yourself (*All
+repositories* or a selection), because GitHub cannot fill that in from a link.
+Repository access alone grants no permissions, so a token with *All
+repositories* but no permissions cannot read anything. A fine-grained token is
+limited to one account or organization.
+
+## Classic token
+
+Works across organizations. Public repositories need no scopes; private repositories need `repo`, which also grants write access.
+IsItGreen only sends read-only queries, but prefer fine-grained tokens where
+possible.
+
+## Organizations with SAML SSO
+
+A classic token must be authorized for each organization that enforces SSO: on <https://github.com/settings/tokens>, choose
+*Configure SSO* next to the token and authorize the organization. You can do
+this yourself; no admin is needed. An OAuth token (`gho_`, for example from
+`gh auth token`) does not appear on that page: sign in through the
+organization's SSO and authorize the app again instead. Until then, the
+organization's repositories show an SSO error and the "Needs you" list notes
+that some results are hidden.
+
+## Organization token policies
+
+An organization can require owner approval for fine-grained tokens, or forbid classic or long-lived tokens. While a
+fine-grained token is pending approval, or when a repository was not selected
+for it, GitHub reports the repository as not found. If the organization has
+approved GitHub CLI, its login usually still works; see [GitHub CLI](#github-cli).
+
 ## Several accounts or organizations
 
 IsItGreen keeps a **default token** plus optional **per-owner tokens**, so you
@@ -145,6 +147,8 @@ Access tokens → Connect GitLab** once GitHub is connected.
 3. Paste the token. IsItGreen checks it with that instance and shows the
    username it belongs to.
 
+To use your GitLab CLI login instead, see [GitLab CLI](#gitlab-cli).
+
 The instance is saved with the token, and the token is only ever sent to that
 instance. One token covers every group and project your account can see, so
 GitLab has no per-owner tokens. One GitLab instance can be connected at a
@@ -161,3 +165,107 @@ you.
 Approval rules beyond what GitLab Free reports are not shown: a merge request
 counts as approved once someone has approved it and GitLab reports no
 missing approvals.
+
+## GitLab CLI
+
+If [GitLab CLI](https://gitlab.com/gitlab-org/cli) (`glab`) is installed and
+signed in (`glab auth login`), the GitLab tab of the setup screen offers **Use
+GitLab CLI login**. It sits above the token form, and it uses the instance in
+the host field above it. IsItGreen then uses the account glab is signed in to
+on that instance:
+
+- **No copy is stored.** IsItGreen records only the instance and the account
+  it is linked to. It asks glab for the token when it needs one (`glab auth
+  credential-helper`), and keeps it in memory only. If glab's login is an OAuth
+  login that has expired, glab refreshes it during that call and saves the new
+  refresh token in its own config.
+- **Sign-out and revocation.** IsItGreen asks glab again at least once a
+  minute, and sooner when glab reports that the token is about to expire. If
+  you sign out of glab (`glab auth logout --hostname <your instance>`), IsItGreen disconnects within a
+  minute. This holds even when a token was set for glab without an instance
+  (`glab config set token --global`): IsItGreen refuses such a token, so it
+  never links to one. A token revoked on GitLab is a different case. glab
+  still returns it, so the recheck does not notice. The next request fails,
+  because GitLab answers a rejected token as an anonymous request, and
+  IsItGreen shows the setup screen so you can link again.
+- **It can also make changes.** glab's token carries the `api` scope, which
+  can write. IsItGreen itself only ever runs its own read-only queries
+  ([SECURITY.md](../SECURITY.md)), but prefer a `read_api` token if you want
+  the token itself to be read-only.
+- **Pinned to one account and instance.** IsItGreen links to the account glab
+  has on the chosen instance at that moment. If glab later returns a token for
+  another account, IsItGreen refuses it and asks you to link again. Linking
+  replaces any token you saved for GitLab, and saving a token or linking
+  another instance replaces the link. As with a token, one GitLab instance is
+  connected at a time, and there are no per-owner links.
+- **Only login tokens.** IsItGreen accepts glab's personal access token and
+  OAuth logins. It refuses a CI job token, and a token that glab holds for no
+  particular instance. If that is the only token glab has, linking says GitLab
+  CLI is not signed in to this instance; run `glab auth login --hostname
+  <your instance>`. If the global token equals the token of your instance's
+  own login, IsItGreen also refuses the link as "not signed in", and
+  `glab auth login` does not help. Remove the global token with `glab config
+  set token "" --global`.
+- **Expired login.** An expired OAuth login that glab cannot renew (it has no
+  refresh token) gives "Could not get a token from GitLab CLI". Run `glab
+  auth login --hostname <your instance>` again.
+- **Some glab setups cannot be linked.** If glab's entry for your instance
+  uses `api_host`, glab reports the API host as the instance. IsItGreen
+  refuses that and shows "Could not get a token from GitLab CLI". Use a
+  personal access token instead, and enter the instance's own address.
+- **Subfolder installs are not supported.** IsItGreen accepts only an
+  instance address without a path, such as `gitlab.example.com`, so a GitLab
+  served under a subfolder (`example.com/gitlab`) can't be connected with
+  GitLab CLI or with a token.
+- **Where glab must be installed.** IsItGreen only runs glab from its usual
+  install locations, never from `PATH`; see
+  [Setting up GitLab CLI](#setting-up-gitlab-cli).
+- IsItGreen ignores `GITLAB_TOKEN`, `GITLAB_ACCESS_TOKEN`, `GLAB_CONFIG_DIR`
+  and `GITLAB_HOST`, even if they are set. It also ignores any glab
+  configuration inside the repository it was started from. Only the login in
+  glab's own user configuration is used. glab 1.85 or newer is needed.
+- **Proxies and certificates.** IsItGreen passes `HTTPS_PROXY`, `HTTP_PROXY`,
+  `NO_PROXY`, `ALL_PROXY` (and their lowercase forms), `SSL_CERT_FILE` and
+  `SSL_CERT_DIR` on to glab so that an OAuth refresh can reach your instance.
+  Keep that in mind if those variables point at a proxy or a certificate
+  authority that you do not trust.
+- **A rare side effect.** IsItGreen stops glab after 20 seconds. If that
+  happens in the middle of an OAuth refresh, glab can lose its new refresh
+  token, and you must run `glab auth login` again.
+
+### Setting up GitLab CLI
+
+If the setup screen does not offer **Use GitLab CLI login**, open *How to set
+up GitLab CLI* there for these steps with the exact locations for your system:
+
+1. Install GitLab CLI: `brew install glab` on macOS, `winget install
+   glab.glab` or `scoop install glab` on Windows, or a package or `sudo snap
+   install glab` on Linux. See the
+   [install guide](https://gitlab.com/gitlab-org/cli#installation). You need
+   version 1.85 or newer.
+2. In a terminal, run `glab auth login --hostname <your instance>`, for
+   example `glab auth login --hostname gitlab.com`.
+3. Make sure glab is in one of the places IsItGreen looks:
+
+   | System | Locations |
+   | --- | --- |
+   | macOS | `/opt/homebrew/bin`, `/usr/local/bin`, `/opt/local/bin` (MacPorts) |
+   | Linux | `/usr/bin`, `/usr/local/bin`, `/home/linuxbrew/.linuxbrew/bin`, `/snap/bin`, `/run/current-system/sw/bin` (NixOS) |
+   | macOS and Linux | `~/.nix-profile/bin`, `/nix/var/nix/profiles/default/bin` (Nix) |
+   | Windows | `%ProgramFiles%\glab` and `%LOCALAPPDATA%\Programs\glab` (official installer, all users or only you), `%LOCALAPPDATA%\Microsoft\WinGet\Links`, `%USERPROFILE%\scoop\shims` (Chocolatey's folder is left out: other users of the PC could create it) |
+
+   If `which glab` shows somewhere else, link it into one of them:
+
+   ```sh
+   sudo mkdir -p /usr/local/bin && sudo ln -sf "$(which glab)" /usr/local/bin/glab
+   ```
+
+   On Windows, if `where glab` shows another location, install glab again with
+   one of the installers above. IsItGreen refuses a glab that anyone could
+   replace (one in, or linked from, a folder everyone can write to).
+4. Choose **Check again**, then **Use GitLab CLI login**.
+
+If IsItGreen then says GitLab CLI is not signed in to the instance, run `glab
+auth login --hostname <your instance>` again. Once fixed in glab, the next
+refresh works without linking again. In Settings, the linked connection shows
+*from GitLab CLI* and **Unlink GitLab CLI** removes the link.

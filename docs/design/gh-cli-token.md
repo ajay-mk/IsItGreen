@@ -295,10 +295,11 @@ Answers to the original open questions:
 
 ### Not done yet
 
+Built-in queries for GitLab are done; see
+[glab-cli-token.md](glab-cli-token.md).
+
 - An account picker when gh has several accounts (`gh auth status --json
   hosts`).
-- Built-in queries for GitLab too; GitLab tokens are `read_api` only, so it
-  still uses the mutation check.
 - Manual testing on macOS (opened from Finder), Windows and a Linux desktop.
   Tests here cover the runner with fake `gh` scripts and the real gh binary
   with throwaway logins.

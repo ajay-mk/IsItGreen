@@ -8,6 +8,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { message } from '@tauri-apps/plugin-dialog';
 import type { GitHubOperation } from '../providers/github/queries';
+import type { GitLabOperation } from '../providers/gitlab/queries';
 import type { ProviderId } from '../providers/types';
 
 export type AppErrorKind =
@@ -32,6 +33,11 @@ export type AppErrorKind =
   | 'gh_outdated'
   | 'gh_failed'
   | 'gh_account_mismatch'
+  | 'glab_not_found'
+  | 'glab_not_logged_in'
+  | 'glab_outdated'
+  | 'glab_failed'
+  | 'glab_account_mismatch'
   | 'internal';
 
 export class AppError extends Error {
@@ -65,9 +71,9 @@ async function call<T>(command: string, args: Record<string, unknown>): Promise<
 
 /**
  * Where a token comes from: one stored in the keychain, or read from the
- * GitHub CLI when needed (IsItGreen keeps no copy of that one).
+ * GitHub CLI or GitLab CLI when needed (IsItGreen keeps no copy of those).
  */
-export type TokenSource = 'token' | 'gh';
+export type TokenSource = 'token' | 'gh' | 'glab';
 
 /** A per-owner token, described by the login GitHub reports for it. */
 export interface OwnerToken {
@@ -105,18 +111,30 @@ export const tokens = {
    * stored for the slot is removed; the backend reads gh's token when needed.
    */
   linkGh: (owner: string | null = null) => call<string>('token_link_gh', { owner }),
+  /**
+   * Links the default GitLab slot to the account the GitLab CLI is signed in
+   * to on `host`. Resolves to that login. Any stored GitLab token is removed;
+   * the backend reads glab's token when needed.
+   */
+  linkGlab: (host: string) => call<string>('token_link_glab', { host }),
 };
 
-export interface GhStatus {
-  /** Where the GitHub CLI was found, or `null` if it is not installed in a known place. */
+/** Where a command-line tool (gh or glab) was found. */
+export interface CliStatus {
+  /** Where the tool was found, or `null` if it is not installed in a known place. */
   path: string | null;
   /** Every place IsItGreen looks for it on this system. */
   searched: string[];
 }
 
 /** Whether the GitHub CLI is installed where IsItGreen looks for it. */
-export function ghStatus(): Promise<GhStatus> {
-  return call<GhStatus>('gh_status', {});
+export function ghStatus(): Promise<CliStatus> {
+  return call<CliStatus>('gh_status', {});
+}
+
+/** Whether the GitLab CLI is installed where IsItGreen looks for it. */
+export function glabStatus(): Promise<CliStatus> {
+  return call<CliStatus>('glab_status', {});
 }
 
 export interface GraphQLError {
@@ -145,11 +163,15 @@ export function githubGraphql<T>(
 }
 
 /**
- * Runs a read-only GraphQL query against the connected GitLab instance. The
- * backend picks the host the stored token belongs to.
+ * Runs one of IsItGreen's read-only GitLab queries, by name (the documents live
+ * in the backend), against the connected GitLab instance. The backend picks
+ * the host the stored token belongs to.
  */
-export function gitlabGraphql<T>(query: string, variables: Record<string, unknown>): Promise<GraphQLResponse<T>> {
-  return call<GraphQLResponse<T>>('gitlab_graphql', { query, variables });
+export function gitlabGraphql<T>(
+  operation: GitLabOperation,
+  variables: Record<string, unknown>,
+): Promise<GraphQLResponse<T>> {
+  return call<GraphQLResponse<T>>('gitlab_graphql', { operation, variables });
 }
 
 /** Saves the window's size and position, which normally happens on exit. */

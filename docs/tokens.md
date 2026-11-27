@@ -202,7 +202,13 @@ on that instance:
   OAuth logins. It refuses a CI job token, and a token that glab holds for no
   particular instance. If that is the only token glab has, linking says GitLab
   CLI is not signed in to this instance; run `glab auth login --hostname
-  <your instance>`.
+  <your instance>`. If the global token equals the token of your instance's
+  own login, IsItGreen also refuses the link as "not signed in", and
+  `glab auth login` does not help. Remove the global token with `glab config
+  set token "" --global`.
+- **Expired login.** An expired OAuth login that glab cannot renew (it has no
+  refresh token) gives "Could not get a token from GitLab CLI". Run `glab
+  auth login --hostname <your instance>` again.
 - **Some glab setups cannot be linked.** If glab's entry for your instance
   uses `api_host`, or the instance is installed under a subfolder, glab
   reports the API host or the path as the instance. IsItGreen refuses that
@@ -243,7 +249,7 @@ up GitLab CLI* there for these steps with the exact locations for your system:
    | macOS | `/opt/homebrew/bin`, `/usr/local/bin`, `/opt/local/bin` (MacPorts) |
    | Linux | `/usr/bin`, `/usr/local/bin`, `/home/linuxbrew/.linuxbrew/bin`, `/snap/bin`, `/run/current-system/sw/bin` (NixOS) |
    | macOS and Linux | `~/.nix-profile/bin`, `/nix/var/nix/profiles/default/bin` (Nix) |
-   | Windows | `%ProgramFiles%\glab` (official installer), `%LOCALAPPDATA%\Microsoft\WinGet\Links`, `%USERPROFILE%\scoop\shims` (Chocolatey's folder is left out: other users of the PC could create it) |
+   | Windows | `%ProgramFiles%\glab` and `%LOCALAPPDATA%\Programs\glab` (official installer, all users or only you), `%LOCALAPPDATA%\Microsoft\WinGet\Links`, `%USERPROFILE%\scoop\shims` (Chocolatey's folder is left out: other users of the PC could create it) |
 
    If `which glab` shows somewhere else, link it into one of them:
 

@@ -44,7 +44,7 @@ can: use any stored token for IsItGreen's own read-only queries, replace or remo
 pointing the GitLab connection at another instance with a new token), make
 the backend send requests to a host of its choosing (as the GitLab instance,
 or as the update check's proxy), and link a slot to the GitHub CLI login or the default GitLab slot to the GitLab CLI login, which run `gh` or `glab` as described above but
-still never reveal the token. The CSP above is what stops injected code from running there.
+still never reveal the token. For GitLab, injected code can also choose which instance in the user's glab config gets linked, which replaces the stored GitLab token. The CSP above is what stops injected code from running there.
 
 ## Out of scope
 

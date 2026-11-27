@@ -44,10 +44,13 @@ about a live link versus a one-time import, which applies here unchanged.
   that glab keeps outside any host (`glab config set token --global`) would
   answer for every host, so IsItGreen also asks for a reserved `.invalid`
   host on every read. The same token for it means glab has no login for the
-  instance, reported as not signed in; a different token or "not
+  instance, reported as not signed in. Signing in again does not help then;
+  the global token has to be removed. A different token or "not
   authenticated" lets the token through, and any other failure keeps it
   unused. Output that is not JSON means a glab older than 1.85, which
-  prints the help for `glab auth` and exits 0.
+  prints the help for `glab auth` and exits 0. An expired OAuth login that
+  glab cannot renew (no refresh token) gives the generic failure, and signing
+  in again fixes it.
 - **Rechecks.** A cached token is reused for 60 seconds, the same as for gh,
   and not when it expires within 30 seconds (`GLAB_EXPIRY_MARGIN`). A token
   glab gave before is not checked with GitLab again. A different one is
@@ -82,7 +85,7 @@ about a live link versus a one-time import, which applies here unchanged.
   slot removes the link.
 - Commands `glab_status` (where glab was found) and `token_link_glab` (link
   the default GitLab slot to glab's login on an instance, gitlab.com when
-  none is given). Requests that arrive together reuse one glab read.
+  none is given). Requests that arrive together reuse one glab read. If that read fails, the requests already waiting return the same error instead of running glab again.
 - UI: **Use GitLab CLI login**, setup steps (`GlabSetup.tsx`), "from GitLab
   CLI" and **Unlink GitLab CLI** in Settings, and the CLI-first order on
   both tabs of the setup screen.

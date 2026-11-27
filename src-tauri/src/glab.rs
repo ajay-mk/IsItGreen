@@ -51,6 +51,9 @@ const PROXY_ENV: &[&str] = &[
 pub struct GlabToken {
     pub token: String,
     pub expires: Option<SystemTime>,
+    /// When glab gave the token. The recheck interval counts from here, not
+    /// from when IsItGreen finished checking it with GitLab.
+    pub read_at: Instant,
 }
 
 /// Where the GitLab CLI's installers put it, in the order they are tried.
@@ -304,6 +307,7 @@ fn ask(cmd: Command, host: &Host, timeout: Duration) -> Result<Option<GlabToken>
     Ok(Some(GlabToken {
         token: token.token,
         expires,
+        read_at: Instant::now(),
     }))
 }
 

@@ -444,6 +444,7 @@ mod tests {
         GlabToken {
             token: token.into(),
             expires: None,
+            read_at: Instant::now(),
         }
     }
 
@@ -455,6 +456,7 @@ mod tests {
         let token = GlabToken {
             token: token.into(),
             expires,
+            read_at: Instant::now(),
         };
         store.link_glab(&host(), LOGIN, &token).unwrap();
         store

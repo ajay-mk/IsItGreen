@@ -559,7 +559,7 @@ impl TokenStore {
             if still_linked {
                 inner.glab = Some(GlabCached {
                     token: token.token.clone(),
-                    checked_at: Instant::now(),
+                    checked_at: token.read_at,
                     expires: token.expires,
                 });
             }
@@ -587,7 +587,7 @@ impl TokenStore {
         }
         inner.glab = Some(GlabCached {
             token: token.token.clone(),
-            checked_at: Instant::now(),
+            checked_at: token.read_at,
             expires: token.expires,
         });
         inner.cache.remove(&(provider, Slot::Default));
@@ -1158,6 +1158,7 @@ mod tests {
         GlabToken {
             token: token.into(),
             expires,
+            read_at: Instant::now(),
         }
     }
 
@@ -1334,6 +1335,12 @@ mod tests {
             &glab_token("glpat-checked0123456789", None),
         );
         age_glab_check(&store, CLI_RECHECK + Duration::from_secs(1));
+        assert_eq!(picked(&store), ask_glab("gitlab.example.com", "jane.doe"));
+        // The minute counts from when glab gave the token, not from when
+        // checking it with GitLab finished.
+        let mut slow = glab_token("glpat-slowcheck0123456789", None);
+        slow.read_at -= CLI_RECHECK + Duration::from_secs(1);
+        store.remember_glab(&host, "jane.doe", &slow);
         assert_eq!(picked(&store), ask_glab("gitlab.example.com", "jane.doe"));
     }
 

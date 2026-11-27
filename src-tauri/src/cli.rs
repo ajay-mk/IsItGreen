@@ -10,13 +10,15 @@
 //! - The child gets a minimal environment ([`PASSED_ENV`] plus what the
 //!   caller adds), so token and config variables in our own environment
 //!   cannot change which token comes back.
-//! - It has no stdin, a time limit and a cap on what it may print. Callers
-//!   only match its error output against known phrases and never show it,
-//!   since it could in theory contain a token.
+//! - It has no stdin, a time limit and a cap on what it may print. On unix
+//!   it runs in its own process group, which is killed when the time runs
+//!   out, so helpers it started cannot outlive it. On Windows only the tool
+//!   itself is killed. Callers only match its error output against known
+//!   phrases and never show it, since it could in theory contain a token.
 
 use std::io::Read;
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
 /// The most a tool may print on stdout. Longer output is refused; stderr is
@@ -96,6 +98,12 @@ pub fn base_command(
     if let Some(cwd) = cwd {
         cmd.current_dir(cwd);
     }
+    // Its own process group, so `run` can kill helpers it starts too.
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        cmd.process_group(0);
+    }
     cmd.stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -116,12 +124,28 @@ pub struct Output {
     pub stderr: Vec<u8>,
 }
 
+/// Kills `child` and, on unix, every process left in its process group
+/// (see [`base_command`]). On Windows, processes the child started live on.
+fn kill_all(child: &mut Child) {
+    #[cfg(unix)]
+    if let Ok(pgid) = libc::pid_t::try_from(child.id()) {
+        // SAFETY: killpg only sends a signal; it touches no memory of ours.
+        unsafe {
+            libc::killpg(pgid, libc::SIGKILL);
+        }
+    }
+    let _ = child.kill();
+}
+
 /// Runs `cmd` for at most `timeout`. Fails if it cannot start, does not
-/// finish in time, or prints more than [`MAX_OUTPUT`] on stdout. Blocking.
+/// finish in time with its output pipes closed, or prints more than
+/// [`MAX_OUTPUT`] on stdout. On failure the child and, on unix, its process
+/// group are killed. Blocking.
 pub fn run(mut cmd: Command, timeout: Duration) -> Result<Output, ()> {
     let mut child = cmd.spawn().map_err(|_| ())?;
     let (Some(stdout), Some(stderr)) = (child.stdout.take(), child.stderr.take()) else {
-        let _ = child.kill();
+        kill_all(&mut child);
+        let _ = child.wait();
         return Err(());
     };
     // Read both pipes while waiting, so a chatty child cannot block on a full
@@ -148,20 +172,27 @@ pub fn run(mut cmd: Command, timeout: Duration) -> Result<Output, ()> {
                 std::thread::sleep(Duration::from_millis(25));
             }
             _ => {
-                let _ = child.kill();
+                kill_all(&mut child);
                 let _ = child.wait();
                 return Err(());
             }
         }
     };
+    // Wait for the pipes only until the deadline; past it, take only output
+    // that has already arrived.
     let collect = |rx: std::sync::mpsc::Receiver<Vec<u8>>| {
-        let left = timeout
-            .saturating_sub(start.elapsed())
-            .max(Duration::from_millis(500));
-        rx.recv_timeout(left).map_err(|_| ())
+        let left = timeout.saturating_sub(start.elapsed());
+        if left.is_zero() {
+            rx.try_recv().ok()
+        } else {
+            rx.recv_timeout(left).ok()
+        }
     };
-    let stdout = collect(out)?;
-    let stderr = collect(err)?;
+    let (Some(stdout), Some(stderr)) = (collect(out), collect(err)) else {
+        // A helper the tool started still holds a pipe open.
+        kill_all(&mut child);
+        return Err(());
+    };
     if stdout.len() as u64 > MAX_OUTPUT {
         return Err(());
     }
@@ -170,6 +201,48 @@ pub fn run(mut cmd: Command, timeout: Duration) -> Result<Output, ()> {
         stdout,
         stderr,
     })
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::test_support::{fake_bin, serial};
+    use super::*;
+
+    #[test]
+    fn a_helper_holding_the_output_open_is_killed() {
+        let _serial = serial();
+        let bin = fake_bin(
+            "cli",
+            "tool",
+            "leaky",
+            "sleep 30 &\necho $! > \"$(dirname \"$0\")/helper\"\necho done",
+        );
+        let start = Instant::now();
+        let cmd = base_command(&bin, &[], &[], None);
+        assert!(run(cmd, Duration::from_secs(2)).is_err());
+        assert!(start.elapsed() < Duration::from_secs(4));
+        let pid: libc::pid_t = std::fs::read_to_string(bin.with_file_name("helper"))
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap();
+        // Once killed, the helper may linger briefly as a zombie until its
+        // new parent reaps it.
+        let gone = |pid: libc::pid_t| {
+            // SAFETY: signal 0 only checks that the process exists.
+            let missing = unsafe { libc::kill(pid, 0) } != 0;
+            let zombie = std::fs::read_to_string(format!("/proc/{pid}/stat")).is_ok_and(|s| {
+                s.rsplit_once(')')
+                    .is_some_and(|(_, r)| r.trim_start().starts_with('Z'))
+            });
+            missing || zombie
+        };
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !gone(pid) && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        assert!(gone(pid), "helper {pid} still running");
+    }
 }
 
 #[cfg(all(test, unix))]

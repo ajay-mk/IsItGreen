@@ -530,12 +530,19 @@ impl TokenStore {
         }
         let key = (provider, slot.clone());
         inner.cache.insert(key.clone(), token.to_owned());
-        inner.gh_checked.insert(key, Instant::now());
+        inner.gh_checked.insert(key.clone(), Instant::now());
         // Only now that the link is saved, drop the stored token, so a failed
-        // save can never lose it. The link is in force either way: resolve()
-        // never reads the keychain for a linked slot.
+        // save can never lose it.
         let account = slot.account(provider);
-        delete_account(&account)?;
+        if let Err(err) = delete_account(&account) {
+            // The stored token is still there: go back to it, so the error
+            // matches what is stored.
+            *inner.index(provider)? = previous;
+            let _ = inner.save_index(provider);
+            inner.cache.remove(&key);
+            inner.gh_checked.remove(&key);
+            return Err(err);
+        }
         Ok(())
     }
 
@@ -548,22 +555,25 @@ impl TokenStore {
 
     /// Keeps a token read from the GitLab CLI in memory once the caller has
     /// checked it belongs to `login` on `host`, unless the slot was unlinked
-    /// or linked to another instance or account in the meantime.
-    pub fn remember_glab(&self, host: &Host, login: &str, token: &GlabToken) {
-        if let Ok(mut inner) = self.lock() {
-            let still_linked = inner.index(Provider::GitLab).is_ok_and(|index| {
-                index
-                    .glab_link()
-                    .is_some_and(|(h, l)| h == *host && l == login)
+    /// or linked to another instance or account in the meantime. Returns
+    /// whether it is still linked; if not, the token must not be sent.
+    pub fn remember_glab(&self, host: &Host, login: &str, token: &GlabToken) -> bool {
+        let Ok(mut inner) = self.lock() else {
+            return false;
+        };
+        let still_linked = inner.index(Provider::GitLab).is_ok_and(|index| {
+            index
+                .glab_link()
+                .is_some_and(|(h, l)| h == *host && l == login)
+        });
+        if still_linked {
+            inner.glab = Some(GlabCached {
+                token: token.token.clone(),
+                checked_at: token.read_at,
+                expires: token.expires,
             });
-            if still_linked {
-                inner.glab = Some(GlabCached {
-                    token: token.token.clone(),
-                    checked_at: token.read_at,
-                    expires: token.expires,
-                });
-            }
         }
+        still_linked
     }
 
     /// Links the default GitLab slot to the GitLab CLI account `login` on
@@ -591,8 +601,14 @@ impl TokenStore {
             expires: token.expires,
         });
         inner.cache.remove(&(provider, Slot::Default));
-        // As in link_gh: delete the stored token only once the link is saved.
-        delete_account(&Slot::Default.account(provider))?;
+        // As in link_gh: delete the stored token only once the link is saved,
+        // and go back to it if that fails.
+        if let Err(err) = delete_account(&Slot::Default.account(provider)) {
+            *inner.index(provider)? = previous;
+            let _ = inner.save_index(provider);
+            inner.glab = None;
+            return Err(err);
+        }
         Ok(())
     }
 

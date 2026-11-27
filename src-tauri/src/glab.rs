@@ -206,7 +206,27 @@ fn failure(code: Option<&str>, oauth_error: Option<&str>, message: &str) -> Erro
 /// Blocking: call from a blocking-safe context.
 pub fn token(host: &Host) -> Result<GlabToken> {
     let glab = locate().ok_or(Error::GlabNotFound)?;
-    run(command(&glab, host), host)
+    read(&glab, host)
+}
+
+/// A host no one can sign in to (`.invalid` is reserved), asked after every
+/// success to see whether the token is really for `host`.
+const PROBE_HOST: &str = "isitgreen-probe.invalid";
+
+/// Asks `glab` for `host`'s token, then for [`PROBE_HOST`]'s. glab answers
+/// for any host it has no login for with a top-level `token:` from its
+/// config, and reports the asked host as the instance. If the probe gets
+/// the same token, the token was not issued for `host`, so it is refused.
+fn read(glab: &Path, host: &Host) -> Result<GlabToken> {
+    let found = run(command(glab, host), host)?;
+    let probe = Host::parse(PROBE_HOST).map_err(|_| Error::Internal)?;
+    // Only a probe that finds no login, or a different token, shows the
+    // token is the host's own; any other failure keeps it unused.
+    match run(command(glab, &probe), &probe) {
+        Ok(other) if other.token == found.token => Err(Error::GlabNotLoggedIn),
+        Ok(_) | Err(Error::GlabNotLoggedIn) => Ok(found),
+        Err(_) => Err(Error::GlabFailed),
+    }
 }
 
 fn run(cmd: Command, host: &Host) -> Result<GlabToken> {
@@ -622,6 +642,79 @@ mod tests {
         let err = fake.ask(&host()).err().unwrap();
         assert!(matches!(err, Error::GlabFailed));
         assert!(!format!("{err} {err:?}").contains(MARKER));
+    }
+
+    /// A stand-in for `glab` that answers by the `--repo` host:
+    /// `for_probe` for [`PROBE_HOST`], `for_host` for any other.
+    fn by_host(name: &str, for_host: &Value, for_probe: &Value) -> Fake {
+        Fake::with_body(
+            name,
+            &format!(
+                "case \"$4\" in\n  https://{PROBE_HOST}/*) echo '{for_probe}' ;;\n  *) echo '{for_host}' ;;\nesac"
+            ),
+        )
+    }
+
+    #[test]
+    fn a_token_glab_gives_for_every_host_is_refused() {
+        let _serial = serial();
+        // A top-level `token:` in glab's config, with no `hosts:` entry.
+        let fake = by_host(
+            "hostless",
+            &success("https://gitlab.example.com:8443", "pat", PAT),
+            &success(&format!("https://{PROBE_HOST}"), "pat", PAT),
+        );
+        assert!(matches!(
+            read(&fake.bin, &host()),
+            Err(Error::GlabNotLoggedIn)
+        ));
+    }
+
+    #[test]
+    fn a_login_for_the_host_wins_over_a_top_level_token() {
+        let _serial = serial();
+        let fake = by_host(
+            "per-host",
+            &success("https://gitlab.example.com:8443", "pat", PAT),
+            &success(
+                &format!("https://{PROBE_HOST}"),
+                "pat",
+                "glpat-toplevel0123456789ab",
+            ),
+        );
+        assert_eq!(read(&fake.bin, &host()).unwrap().token, PAT);
+    }
+
+    #[test]
+    fn a_probe_that_finds_no_login_accepts_the_token() {
+        let _serial = serial();
+        let fake = by_host(
+            "probe-error",
+            &success("https://gitlab.example.com:8443", "pat", PAT),
+            &json!({
+                "type": "error",
+                "code": "not_authenticated",
+                "host": PROBE_HOST,
+                "message": "glab is not authenticated. Use glab auth login to authenticate",
+            }),
+        );
+        assert_eq!(read(&fake.bin, &host()).unwrap().token, PAT);
+    }
+
+    #[test]
+    fn a_probe_that_fails_otherwise_keeps_the_token_unused() {
+        let _serial = serial();
+        let fake = by_host(
+            "probe-keyring",
+            &success("https://gitlab.example.com:8443", "pat", PAT),
+            &json!({
+                "type": "error",
+                "code": "keyring_unavailable",
+                "host": PROBE_HOST,
+                "message": "could not read the keyring",
+            }),
+        );
+        assert!(matches!(read(&fake.bin, &host()), Err(Error::GlabFailed)));
     }
 
     #[test]

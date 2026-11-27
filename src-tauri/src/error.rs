@@ -52,7 +52,7 @@ pub enum Error {
     GhAccountMismatch,
     #[error("GitLab CLI (glab) was not found. Install it and sign in with `glab auth login`")]
     GlabNotFound,
-    #[error("GitLab CLI is not signed in to this GitLab instance. Run `glab auth login --hostname <host>` in a terminal, then try again")]
+    #[error("GitLab CLI is not signed in to this GitLab instance. Run `glab auth login` in a terminal, then try again")]
     GlabNotLoggedIn,
     #[error("GitLab CLI is too old; update it to version 1.85 or newer")]
     GlabOutdated,

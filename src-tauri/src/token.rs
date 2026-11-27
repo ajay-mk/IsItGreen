@@ -537,8 +537,15 @@ impl TokenStore {
         if let Err(err) = delete_account(&account) {
             // The stored token is still there: go back to it, so the error
             // matches what is stored.
-            *inner.index(provider)? = previous;
-            let _ = inner.save_index(provider);
+            let linked = std::mem::replace(inner.index(provider)?, previous);
+            if inner.save_index(provider).is_err() {
+                // The keychain still holds the link, so keep it in memory
+                // too, or it would come back after a restart. The old token
+                // left behind is never read for a linked slot, and clear()
+                // deletes it.
+                *inner.index(provider)? = linked;
+                return Ok(());
+            }
             inner.cache.remove(&key);
             inner.gh_checked.remove(&key);
             return Err(err);
@@ -604,8 +611,13 @@ impl TokenStore {
         // As in link_gh: delete the stored token only once the link is saved,
         // and go back to it if that fails.
         if let Err(err) = delete_account(&Slot::Default.account(provider)) {
-            *inner.index(provider)? = previous;
-            let _ = inner.save_index(provider);
+            let linked = std::mem::replace(inner.index(provider)?, previous);
+            if inner.save_index(provider).is_err() {
+                // As in link_gh: the keychain still holds the link, so memory
+                // keeps it too.
+                *inner.index(provider)? = linked;
+                return Ok(());
+            }
             inner.glab = None;
             return Err(err);
         }
@@ -810,6 +822,93 @@ impl TokenStore {
             if provider == Provider::GitLab && *slot == Slot::Default {
                 inner.glab = None;
             }
+        }
+    }
+}
+
+/// A keychain for tests: in memory, kept across `keyring::Entry::new`, and
+/// able to fail on demand. Each test runs on its own thread, so the entries
+/// and failure switches are per thread and tests cannot see each other's.
+#[cfg(test)]
+pub(crate) mod test_keychain {
+    use std::any::Any;
+    use std::cell::{Cell, RefCell};
+    use std::collections::HashMap;
+
+    use keyring::credential::{CredentialApi, CredentialBuilderApi};
+    use keyring::{Credential, Error, Result};
+
+    thread_local! {
+        static ENTRIES: RefCell<HashMap<String, Vec<u8>>> = RefCell::new(HashMap::new());
+        static FAIL_DELETE: Cell<bool> = const { Cell::new(false) };
+        static SETS_BEFORE_FAILING: Cell<Option<usize>> = const { Cell::new(None) };
+    }
+
+    /// Sends all keychain calls in this test binary here.
+    pub fn install() {
+        static ONCE: std::sync::Once = std::sync::Once::new();
+        ONCE.call_once(|| keyring::set_default_credential_builder(Box::new(Builder)));
+    }
+
+    /// Makes every delete on this thread fail, or work again.
+    pub fn fail_delete(fail: bool) {
+        FAIL_DELETE.set(fail);
+    }
+
+    /// Lets `n` more writes on this thread succeed and fails the ones after;
+    /// `None` lets all of them succeed.
+    pub fn fail_set_after(n: Option<usize>) {
+        SETS_BEFORE_FAILING.set(n);
+    }
+
+    /// What is stored for `account` on this thread.
+    pub fn stored(account: &str) -> Option<String> {
+        ENTRIES.with_borrow(|e| e.get(account).map(|v| String::from_utf8_lossy(v).into()))
+    }
+
+    fn failure() -> Error {
+        Error::PlatformFailure("test keychain failure".into())
+    }
+
+    struct Builder;
+
+    impl CredentialBuilderApi for Builder {
+        fn build(&self, _: Option<&str>, _: &str, user: &str) -> Result<Box<Credential>> {
+            Ok(Box::new(Entry(user.to_owned())))
+        }
+
+        fn as_any(&self) -> &dyn Any {
+            self
+        }
+    }
+
+    #[derive(Debug)]
+    struct Entry(String);
+
+    impl CredentialApi for Entry {
+        fn set_secret(&self, secret: &[u8]) -> Result<()> {
+            match SETS_BEFORE_FAILING.get() {
+                Some(0) => return Err(failure()),
+                Some(n) => SETS_BEFORE_FAILING.set(Some(n - 1)),
+                None => {}
+            }
+            ENTRIES.with_borrow_mut(|e| e.insert(self.0.clone(), secret.to_vec()));
+            Ok(())
+        }
+
+        fn get_secret(&self) -> Result<Vec<u8>> {
+            ENTRIES.with_borrow(|e| e.get(&self.0).cloned().ok_or(Error::NoEntry))
+        }
+
+        fn delete_credential(&self) -> Result<()> {
+            if FAIL_DELETE.get() {
+                return Err(failure());
+            }
+            ENTRIES.with_borrow_mut(|e| e.remove(&self.0).map(|_| ()).ok_or(Error::NoEntry))
+        }
+
+        fn as_any(&self) -> &dyn Any {
+            self
         }
     }
 }
@@ -1154,14 +1253,10 @@ mod tests {
     use crate::glab::GlabToken;
     use std::time::SystemTime;
 
-    /// Keychain calls in these tests go to keyring's in-memory mock, never
-    /// to the real keychain. Mock entries keep nothing between calls, so a
-    /// test cannot read back what it wrote; it checks the store instead.
+    /// Keychain calls in these tests go to [`test_keychain`], never to the
+    /// real keychain.
     fn mock_keychain() {
-        static ONCE: std::sync::Once = std::sync::Once::new();
-        ONCE.call_once(|| {
-            keyring::set_default_credential_builder(keyring::mock::default_credential_builder())
-        });
+        test_keychain::install();
     }
 
     const GL: Provider = Provider::GitLab;
@@ -1442,5 +1537,131 @@ mod tests {
         );
         let saved = Index::decode(&store.lock().unwrap().index(GL).unwrap().encode());
         assert!(saved.default_glab);
+    }
+
+    /// The index as stored in the keychain, which is what a restart reads.
+    fn stored_index(provider: Provider) -> Index {
+        Index::decode(&test_keychain::stored(&index_account(provider)).unwrap())
+    }
+
+    /// Links over a stored token while deleting it fails, and the save that
+    /// would undo the link fails too when `rollback_fails`.
+    fn link_while_delete_fails(
+        rollback_fails: bool,
+        link: impl FnOnce() -> Result<()>,
+    ) -> Result<()> {
+        test_keychain::fail_delete(true);
+        // The link's own save works; only the one undoing it may fail.
+        test_keychain::fail_set_after(rollback_fails.then_some(1));
+        let result = link();
+        test_keychain::fail_delete(false);
+        test_keychain::fail_set_after(None);
+        result
+    }
+
+    const GH_STORED: &str = "ghp_stored0123456789abcdef";
+    const GL_STORED: &str = "glpat-pasted0123456789ab";
+
+    fn gh_with_stored_token() -> TokenStore {
+        mock_keychain();
+        let store = TokenStore::default();
+        store
+            .set(GH, &Slot::Default, GH_STORED, "octocat", None)
+            .unwrap();
+        store
+    }
+
+    fn gl_with_stored_token() -> TokenStore {
+        mock_keychain();
+        let store = TokenStore::default();
+        store
+            .set(
+                GL,
+                &Slot::Default,
+                GL_STORED,
+                "jane.doe",
+                Some(&h("gitlab.example.com")),
+            )
+            .unwrap();
+        store
+    }
+
+    const GH: Provider = Provider::GitHub;
+
+    #[test]
+    fn a_gh_link_whose_old_token_cannot_be_deleted_is_undone() {
+        let store = gh_with_stored_token();
+        let before = stored_index(GH);
+        let result = link_while_delete_fails(false, || {
+            store.link_gh(GH, &Slot::Default, "octocat", "gho_linked")
+        });
+        assert!(matches!(result, Err(Error::Keyring(_))));
+        assert_eq!(stored_index(GH), before);
+        assert_eq!(store.lock().unwrap().index(GH).unwrap().clone(), before);
+        assert!(matches!(
+            store.resolve(GH, None).unwrap(),
+            Resolved::Token { token, .. } if token == GH_STORED
+        ));
+    }
+
+    #[test]
+    fn a_gh_link_that_cannot_be_undone_is_kept() {
+        let store = gh_with_stored_token();
+        let result = link_while_delete_fails(true, || {
+            store.link_gh(GH, &Slot::Default, "octocat", "gho_linked")
+        });
+        assert!(result.is_ok());
+        assert!(matches!(
+            store.resolve(GH, None).unwrap(),
+            Resolved::Token { token, .. } if token == "gho_linked"
+        ));
+        // After a restart the same link is in force.
+        let restarted = TokenStore::default();
+        assert!(matches!(
+            restarted.resolve(GH, None).unwrap(),
+            Resolved::FromGh { login, slot: Slot::Default } if login == "octocat"
+        ));
+    }
+
+    #[test]
+    fn a_glab_link_whose_old_token_cannot_be_deleted_is_undone() {
+        let store = gl_with_stored_token();
+        let before = stored_index(GL);
+        let result = link_while_delete_fails(false, || {
+            store.link_glab(
+                &h("gitlab.other.com"),
+                "jane.doe",
+                &glab_token("glpat-linked", None),
+            )
+        });
+        assert!(matches!(result, Err(Error::Keyring(_))));
+        assert_eq!(stored_index(GL), before);
+        assert_eq!(store.lock().unwrap().index(GL).unwrap().clone(), before);
+        assert_eq!(
+            picked(&store),
+            Ok((GL_STORED.to_owned(), "gitlab.example.com".to_owned()))
+        );
+    }
+
+    #[test]
+    fn a_glab_link_that_cannot_be_undone_is_kept() {
+        let store = gl_with_stored_token();
+        let result = link_while_delete_fails(true, || {
+            store.link_glab(
+                &h("gitlab.other.com"),
+                "jane.doe",
+                &glab_token("glpat-linked", None),
+            )
+        });
+        assert!(result.is_ok());
+        assert_eq!(
+            picked(&store),
+            Ok(("glpat-linked".to_owned(), "gitlab.other.com".to_owned()))
+        );
+        // After a restart the same link is in force.
+        assert_eq!(
+            picked(&TokenStore::default()),
+            Err(("gitlab.other.com".to_owned(), "jane.doe".to_owned()))
+        );
     }
 }

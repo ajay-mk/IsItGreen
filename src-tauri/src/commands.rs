@@ -478,7 +478,7 @@ mod tests {
     /// A store whose default GitLab slot is linked to glab with `token`
     /// cached, fresh unless it `expires` soon.
     fn linked(token: &str, expires: Option<SystemTime>) -> TokenStore {
-        keyring::set_default_credential_builder(keyring::mock::default_credential_builder());
+        crate::token::test_keychain::install();
         let store = TokenStore::default();
         let token = GlabToken {
             token: token.into(),
